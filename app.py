@@ -3,118 +3,146 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 
-# --- 1. PAGE CONFIG ---
-st.set_page_config(page_title="FinQuest Terminal Pro", layout="wide", page_icon="📈")
+# --- 1. CONFIG & SESSION STATE ---
+st.set_page_config(page_title="FinQuest Pro Terminal", layout="wide", page_icon="💹")
 
-# Custom CSS for a clean, dark-themed professional look
-st.markdown("""
-    <style>
-    .stMetric { background-color: #f0f2f6; padding: 15px; border-radius: 10px; }
-    .main { background-color: #ffffff; }
-    </style>
-    """, unsafe_allow_html=True)
+# Initialize persistent data
+if "auth" not in st.session_state: st.session_state.auth = False
+if "watchlist" not in st.session_state: st.session_state.watchlist = []
+if "page" not in st.session_state: st.session_state.page = "Summary"
+if "selected_stock" not in st.session_state: st.session_state.selected_stock = "RELIANCE"
+
+# Industry Data Mapping
+industry_map = {
+    "Banking": ["HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK"],
+    "IT Services": ["TCS", "INFY", "WIPRO", "HCLTECH", "TECHM"],
+    "Energy": ["RELIANCE", "ONGC", "BPCL", "NTPC", "POWERGRID"],
+    "Consumer": ["HINDUNILVR", "ITC", "NESTLEIND", "TATACONSUM", "VBL"],
+    "Automobile": ["TATAMOTORS", "M&M", "MARUTI", "BAJAJ-AUTO", "EICHERMOT"]
+}
+all_stocks = [s for sub in industry_map.values() for s in sub]
 
 # --- 2. AUTHENTICATION ---
-if "auth" not in st.session_state:
-    st.session_state.auth = False
-
 if not st.session_state.auth:
-    st.title("🔐 Terminal Access")
-    key = st.text_input("Enter Access Key", type="password")
-    if st.button("Initialize"):
+    st.title("🔐 FinQuest Pro Terminal")
+    key = st.text_input("Access Key", type="password")
+    if st.button("Initialize Terminal"):
         if key == "invest2025":
             st.session_state.auth = True
             st.rerun()
     st.stop()
 
-# --- 3. INDUSTRY DIRECTORY ---
-st.title("📟 Market Intelligence Terminal")
+# --- 3. SIDEBAR NAVIGATION ---
+with st.sidebar:
+    st.title("💎 FinQuest Menu")
+    nav = st.radio("Navigate", ["📊 Market Summary", "🏢 Industry Movers", "📈 Stock Profile", "⭐ My Watchlist"])
+    st.session_state.page = nav
+    st.divider()
+    st.caption("Data: 15m Delayed NSE")
 
-with st.expander("📂 Industry Directory (Select a Stock to View Profile)", expanded=True):
-    industry_map = {
-        "Banking": ["HDFCBANK", "ICICIBANK", "SBIN"],
-        "IT Services": ["TCS", "INFY", "WIPRO"],
-        "Energy": ["RELIANCE", "ONGC", "BPCL"],
-        "Consumer": ["HINDUNILVR", "ITC", "TATACONSUM"],
-        "Automobile": ["TATAMOTORS", "M&M", "MARUTI"]
-    }
+# Helper function to get single stock data row
+def get_stock_stats(ticker):
+    t = yf.Ticker(f"{ticker}.NS")
+    hist = t.history(period="2d")
+    if len(hist) < 2: return None
+    ltp = hist['Close'].iloc[-1]
+    prev = hist['Close'].iloc[-2]
+    high = hist['High'].max()
+    low = hist['Low'].min()
+    vol = hist['Volume'].iloc[-1]
+    change = ((ltp - prev)/prev)*100
+    return {"Ticker": ticker, "LTP": ltp, "Change %": round(change, 2), "High": high, "Low": low, "Volume": vol}
+
+# --- PAGE 1: MARKET SUMMARY ---
+if st.session_state.page == "📊 Market Summary":
+    st.header("📊 Market Wide Summary")
+    with st.spinner("Compiling Market Data..."):
+        summary_list = [get_stock_stats(s) for s in all_stocks[:12]] # Showing top 12 for speed
+        df = pd.DataFrame([s for s in summary_list if s])
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    st.info("Tip: Go to 'Stock Profile' to search any custom ticker.")
+
+# --- PAGE 2: INDUSTRY MOVERS ---
+elif st.session_state.page == "🏢 Industry Movers":
+    st.header("🏢 Industry Performance")
+    selected_ind = st.selectbox("Select Industry", list(industry_map.keys()))
     
-    # Create columns for a tabular look
-    cols = st.columns(len(industry_map))
-    selected_stock = st.session_state.get("current_ticker", "RELIANCE")
-
-    for i, (industry, stocks) in enumerate(industry_map.items()):
-        with cols[i]:
-            st.markdown(f"**{industry}**")
-            for s in stocks:
-                if st.button(f"view {s}", key=f"btn_{s}"):
-                    st.session_state.current_ticker = s
-                    st.rerun()
-
-st.divider()
-
-# --- 4. INDIVIDUAL STOCK PROFILE ---
-ticker_to_load = st.session_state.get("current_ticker", "RELIANCE")
-st.header(f"📊 Stock Profile: {ticker_to_load}")
-
-# Timeframe Selector
-timeframe = st.segmented_control("Select Timeframe", options=["1mo", "6mo", "1y", "5y"], default="1y")
-
-# Fetch Data
-ticker_ns = f"{ticker_to_load}.NS"
-data = yf.download(ticker_ns, period=timeframe, interval="1d", auto_adjust=True)
-
-if not data.empty:
-    # Calculations
-    ltp = data['Close'].iloc[-1].item()
-    prev_close = data['Close'].iloc[-2].item()
-    change_pct = ((ltp - prev_close) / prev_close) * 100
+    stocks = industry_map[selected_ind]
+    ind_data = []
+    for s in stocks:
+        stats = get_stock_stats(s)
+        if stats: ind_data.append(stats)
     
-    # Technical: RSI for Buying Suggestions
-    delta = data['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
-    current_rsi = rsi.iloc[-1].item()
-
-    # Insight Logic
-    if current_rsi < 30: insight, color = "PROBABLE BUY (Oversold)", "green"
-    elif current_rsi > 70: insight, color = "PROBABLE SELL (Overbought)", "red"
-    else: insight, color = "HOLD / NEUTRAL", "gray"
-
-    # Display Metrics
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Current Price", f"₹{ltp:,.2f}", f"{change_pct:.2f}%")
-    m2.metric("RSI (14-Day)", f"{current_rsi:.1f}")
-    m3.markdown(f"**Buying Period Suggestion:** <br><h3 style='color:{color}; margin:0;'>{insight}</h3>", unsafe_allow_html=True)
-
-    # --- 5. IMPROVED TREND LINE CHART ---
-    st.subheader("Historical Trend Line")
+    df_ind = pd.DataFrame(ind_data)
+    st.table(df_ind)
     
-    fig = go.Figure()
-    # Adding a filled area under the line for better visibility
-    fig.add_trace(go.Scatter(
-        x=data.index, 
-        y=data['Close'], 
-        mode='lines',
-        line=dict(color='#1f77b4', width=3), # Bold line
-        fill='tozeroy', # Shaded area below the line
-        fillcolor='rgba(31, 119, 180, 0.1)', # Very light blue shade
-        name="Close Price"
-    ))
+    st.subheader("Quick Select Profile")
+    cols = st.columns(len(stocks))
+    for i, s in enumerate(stocks):
+        if cols[i].button(s):
+            st.session_state.selected_stock = s
+            st.session_state.page = "📈 Stock Profile"
+            st.rerun()
 
-    fig.update_layout(
-        template="plotly_white",
-        hovermode="x unified",
-        xaxis=dict(showgrid=False, title="Date"),
-        yaxis=dict(showgrid=True, gridcolor='#f0f0f0', title="Price (₹)"),
-        margin=dict(l=0, r=0, t=10, b=0),
-        height=500
-    )
+# --- PAGE 3: STOCK PROFILE (WITH IMPROVED TREND LINES) ---
+elif st.session_state.page == "📈 Stock Profile":
+    ticker = st.session_state.selected_stock
+    st.header(f"📈 {ticker} - Technical Profile")
     
-    st.plotly_chart(fig, use_container_width=True)
+    # Search Box
+    search = st.text_input("Search Ticker (e.g. ZOMATO)", value=ticker).upper()
+    if search != ticker:
+        st.session_state.selected_stock = search
+        st.rerun()
 
-else:
-    st.error("Ticker data not available. Please try a different symbol.")
+    data = yf.download(f"{search}.NS", period="1y", interval="1d", auto_adjust=True)
     
+    if not data.empty:
+        # KPI metrics
+        ltp = data['Close'].iloc[-1].item()
+        
+        col1, col2 = st.columns([3, 1])
+        with col2:
+            st.metric("Current Price", f"₹{ltp:,.2f}")
+            if st.button("➕ Add to Watchlist"):
+                if search not in st.session_state.watchlist:
+                    st.session_state.watchlist.append(search)
+                    st.success(f"{search} Added!")
+        
+        with col1:
+            # IMPROVED TREND GRAPH
+            fig = go.Figure()
+            # The "Area Trend" - Most visual for trendlines
+            fig.add_trace(go.Scatter(
+                x=data.index, y=data['Close'],
+                fill='tozeroy', 
+                mode='lines',
+                line=dict(width=3, color='#00CC96'),
+                fillcolor='rgba(0, 204, 150, 0.1)',
+                name="Trend"
+            ))
+            fig.update_layout(
+                template="plotly_white",
+                height=500,
+                xaxis_title="Date",
+                yaxis_title="Price (₹)",
+                hovermode="x unified"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+
+# --- PAGE 4: WATCHLIST ---
+elif st.session_state.page == "⭐ My Watchlist":
+    st.header("⭐ My Watchlist")
+    if not st.session_state.watchlist:
+        st.write("Your watchlist is empty. Go to Stock Profile to add some!")
+    else:
+        watch_data = []
+        for s in st.session_state.watchlist:
+            stats = get_stock_stats(s)
+            if stats: watch_data.append(stats)
+        
+        st.dataframe(pd.DataFrame(watch_data), use_container_width=True, hide_index=True)
+        if st.button("Clear Watchlist"):
+            st.session_state.watchlist = []
+            st.rerun()
