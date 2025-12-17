@@ -42,7 +42,7 @@ def nav(target, ticker=None):
     if ticker: st.session_state.ticker = ticker
     st.rerun()
 
-# --- 2. INDEX CONSTITUENTS ---
+# --- 2. INDEX DATA ---
 INDEX_DATA = {
     "NIFTY 50": [
         {"Symbol": "HDFCBANK.NS", "Company": "HDFC Bank", "Weight": "13.7%"},
@@ -70,7 +70,7 @@ INDEX_DATA = {
     ]
 }
 
-# --- 3. HOME PAGE (Clickable Rows) ---
+# --- 3. HOME PAGE ---
 if st.session_state.page == "home":
     st.markdown("<div style='text-align:center; padding:30px 0;'><h1 style='margin:0;'>FinQuest Pro</h1><p style='color:#8E8E93;'>Terminal v2025</p></div>", unsafe_allow_html=True)
     
@@ -82,26 +82,25 @@ if st.session_state.page == "home":
             if st.button(f"{name}", key=f"btn_{sym}"):
                 nav("detail", sym)
             
-            # Create interactive table
             df_index = pd.DataFrame(INDEX_DATA[name])
             
-            # Capture clicks using on_select
+            # FIX: Removed width="stretch" and used use_container_width=True
             event = st.dataframe(
                 df_index, 
                 hide_index=True, 
-                width=None,
-                on_select="rerun", # Forces app to refresh when a row is clicked
+                use_container_width=True,
+                on_select="rerun", 
                 selection_mode="single-row",
                 key=f"table_{name}"
             )
             
-            # Logic to handle selection
             if event.selection.rows:
                 selected_row_idx = event.selection.rows[0]
                 selected_ticker = df_index.iloc[selected_row_idx]['Symbol']
                 nav("detail", selected_ticker)
 
-    search = st.text_input("", placeholder="Search Ticker...", label_visibility="collapsed")
+    st.write("###")
+    search = st.text_input("", placeholder="Quick Search...", label_visibility="collapsed")
     if search: nav("detail", search.upper())
 
 # --- 4. DETAIL PAGE ---
@@ -119,13 +118,12 @@ elif st.session_state.page == "detail":
 
         fig = go.Figure(data=[go.Scatter(x=df.index, y=df['Close'], line=dict(color='#007AFF', width=2))])
         fig.update_layout(template="plotly_dark", height=300, margin=dict(l=0,r=0,t=0,b=0), paper_bgcolor='black', plot_bgcolor='black')
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, use_container_width=True)
 
-    st.write("### Financial Performance (Millions)")
+    st.write("### Financials (Millions)")
     try:
         fin = stock.financials
         if not fin.empty:
-            # Displaying in Millions
-            fin_millions = fin.iloc[:, :4] / 1_000_000
-            st.dataframe(fin_millions.style.format("{:,.2f}M"), width="stretch")
-    except: st.info("Financial data not available.")
+            fin_millions = fin.iloc[:, :3] / 1_000_000
+            st.dataframe(fin_millions.style.format("{:,.2f}M"), use_container_width=True)
+    except: st.info("Financial data not found.")
