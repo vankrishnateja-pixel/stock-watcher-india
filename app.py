@@ -2,28 +2,19 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
-from datetime import datetime
 
-# --- 1. APPLE STOCKS DESIGN (CSS) ---
+# --- 1. APPLE STOCKS DESIGN ---
 st.set_page_config(page_title="Stocks", layout="wide", page_icon="📈")
 
 st.markdown("""
     <style>
-    /* Clean Apple-style Background */
     .stApp { background-color: #000000; color: white; }
-    
-    /* Sidebar Watchlist Styling */
     section[data-testid="stSidebar"] {
         background-color: #1c1c1e !important;
         border-right: 1px solid #38383a;
-        width: 300px !important;
+        width: 350px !important;
     }
-    
-    /* Metric Styling */
     [data-testid="stMetricValue"] { font-size: 32px !important; font-weight: 700 !important; color: white !important; }
-    [data-testid="stMetricDelta"] { font-size: 18px !important; }
-    
-    /* Button Styling to look like list items */
     .stButton>button {
         width: 100%;
         background-color: transparent;
@@ -34,100 +25,104 @@ st.markdown("""
         padding: 15px 10px;
         border-radius: 0;
     }
-    .stButton>button:hover { background-color: #2c2c2e; border-bottom: 1px solid #38383a; }
+    .stButton>button:hover { background-color: #2c2c2e; }
+    /* Style for the search result selection */
+    div[data-baseweb="select"] { background-color: #2c2c2e; border-radius: 8px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. STATE MANAGEMENT ---
-if "selected_ticker" not in st.session_state:
-    st.session_state.selected_ticker = "RELIANCE"
+# --- 2. SEARCH LOGIC ---
+def search_stocks(query):
+    """Uses yfinance to find tickers based on company names."""
+    try:
+        search = yf.Search(query, max_results=8)
+        # Filter for stocks/equities and format for the dropdown
+        results = []
+        for quote in search.quotes:
+            display_name = f"{quote['symbol']} - {quote.get('shortname', 'Unknown')}"
+            results.append({"symbol": quote['symbol'], "display": display_name})
+        return results
+    except Exception:
+        return []
 
-# --- 3. SIDEBAR WATCHLIST ---
+# --- 3. STATE MANAGEMENT ---
+if "selected_ticker" not in st.session_state:
+    st.session_state.selected_ticker = "RELIANCE.NS"
+
+# --- 4. SIDEBAR WATCHLIST & SEARCH ---
 with st.sidebar:
     st.title("Stocks")
-    search = st.text_input("", placeholder="Search Tickers", label_visibility="collapsed").upper()
-    if search:
-        if st.button(f"🔍 Search: {search}"):
-            st.session_state.selected_ticker = search
+    
+    # Company Name Search Box
+    search_query = st.text_input("Search Company Name", placeholder="e.g. Apple or Tata Motors")
+    
+    if search_query:
+        matches = search_stocks(search_query)
+        if matches:
+            options = {m['display']: m['symbol'] for m in matches}
+            selected_from_search = st.selectbox("Select Result:", options.keys(), index=None, placeholder="Choose a company...")
+            if selected_from_search:
+                st.session_state.selected_ticker = options[selected_from_search]
+        else:
+            st.caption("No matches found.")
 
     st.markdown("---")
-    
-    # Pre-defined Apple-style Watchlist
-    watchlist = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ZOMATO", "TATAMOTORS", "ICICIBANK"]
-    
+    st.subheader("Watchlist")
+    watchlist = ["RELIANCE.NS", "AAPL", "TSLA", "TCS.NS", "NVDA", "ZOMATO.NS"]
     for stock in watchlist:
-        if st.button(f"**{stock}**", key=f"list_{stock}"):
+        if st.button(f"**{stock}**"):
             st.session_state.selected_ticker = stock
 
-# --- 4. MAIN DISPLAY (APPLE STOCKS LAYOUT) ---
+# --- 5. DATA FETCHING & DISPLAY ---
 ticker = st.session_state.selected_ticker
-data = yf.download(f"{ticker}.NS", period="1d", interval="1m", progress=False)
+stock_obj = yf.Ticker(ticker)
+data = stock_obj.history(period="1d", interval="2m")
 
 if not data.empty:
-    # Flatten columns
-    if isinstance(data.columns, pd.MultiIndex): data.columns = data.columns.get_level_values(0)
+    # Get Metadata
+    info = stock_obj.info
+    long_name = info.get('longName', ticker)
     
-    ltp = float(data['Close'].iloc[-1])
-    prev_close = float(data['Open'].iloc[0]) # Start of day
-    change = ltp - prev_close
-    pct_change = (change / prev_close) * 100
+    # Calculate Changes
+    ltp = data['Close'].iloc[-1]
+    open_price = data['Open'].iloc[0]
+    change = ltp - open_price
+    pct_change = (change / open_price) * 100
     
-    # Header Section
-    st.title(ticker)
-    st.subheader("National Stock Exchange")
+    # Header
+    st.title(long_name)
+    st.caption(f"{ticker} • {info.get('exchange', 'Market')}")
     
-    col1, col2 = st.columns([1, 4])
+    col1, _ = st.columns([1, 3])
     with col1:
-        st.metric(label="", value=f"₹{ltp:,.2f}", delta=f"{change:+.2f} ({pct_change:+.2f}%)")
-    
-    # 5. THE CHART (CLEAN APPLE TRENDLINE)
-    # Apple uses a clean line chart with a gradient fill
+        st.metric(label="", value=f"{info.get('currency', '₹')}{ltp:,.2f}", 
+                  delta=f"{change:+.2f} ({pct_change:+.2f}%)")
+
+    # Clean Apple Chart
+    line_color = "#30d158" if change >= 0 else "#ff453a"
     fig = go.Figure()
-    
-    # Choose color based on gain/loss
-    line_color = "#30d158" if change >= 0 else "#ff453a" # Apple Green/Red
-    
     fig.add_trace(go.Scatter(
-        x=data.index, 
-        y=data['Close'], 
-        mode='lines',
+        x=data.index, y=data['Close'], mode='lines',
         line=dict(color=line_color, width=3),
         fill='tozeroy',
         fillcolor=f'rgba({48 if change >= 0 else 255}, {209 if change >= 0 else 69}, {88 if change >= 0 else 58}, 0.1)',
-        name="Price"
+        hovertemplate="Price: %{y:.2f}<extra></extra>"
     ))
 
     fig.update_layout(
-        plot_bgcolor="black",
-        paper_bgcolor="black",
-        font=dict(color="white"),
-        xaxis=dict(showgrid=False, showticklabels=True, color="#8e8e93"),
-        yaxis=dict(side="right", showgrid=True, gridcolor="#2c2c2e", color="#8e8e93"),
-        height=400,
-        margin=dict(l=0, r=0, t=20, b=0),
-        hovermode="x unified"
+        plot_bgcolor="black", paper_bgcolor="black",
+        xaxis=dict(showgrid=False, color="#8e8e93"),
+        yaxis=dict(side="right", gridcolor="#2c2c2e", color="#8e8e93"),
+        height=350, margin=dict(l=0, r=0, t=10, b=0)
     )
-    
     st.plotly_chart(fig, use_container_width=True)
 
-    # 6. ALERT & INFO SECTION
+    # Market Details
     st.markdown("---")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("### 🔔 Price Alert")
-        target = st.number_input("Target Price", value=round(ltp, 2))
-        email = st.text_input("Email ID", placeholder="Enter email for alerts")
-        if st.button("Set Alert"):
-            st.success(f"Alert set for {ticker} at ₹{target}")
-            if ltp <= target:
-                st.toast("🎯 Target Reached!", icon="✅")
-    
-    with c2:
-        st.markdown("### 📊 Market Stats")
-        st.write(f"**Open:** ₹{data['Open'].iloc[0]:,.2f}")
-        st.write(f"**High:** ₹{data['High'].max():,.2f}")
-        st.write(f"**Low:** ₹{data['Low'].min():,.2f}")
-        st.write(f"**Vol:** {data['Volume'].iloc[-1]:,.0f}")
-
+    m1, m2, m3, m4 = st.columns(4)
+    m1.write(f"**High**\n\n{data['High'].max():,.2f}")
+    m2.write(f"**Low**\n\n{data['Low'].min():,.2f}")
+    m3.write(f"**Mkt Cap**\n\n{info.get('marketCap', 0)/1e9:.1f}B")
+    m4.write(f"**P/E Ratio**\n\n{info.get('trailingPE', 'N/A')}")
 else:
-    st.error("Ticker not found. Please ensure it's a valid NSE code.")
+    st.warning(f"Unable to load data for {ticker}. Check the symbol format (e.g., .NS for Indian stocks).")
