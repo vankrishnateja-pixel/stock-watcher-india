@@ -2,127 +2,132 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
-import smtplib
-from email.mime.text import MIMEText
+from datetime import datetime
 
-# --- 1. CONFIG & SESSION STATE ---
-st.set_page_config(page_title="FinQuest Pro Terminal", layout="wide", page_icon="💹")
+# --- 1. APPLE STOCKS DESIGN (CSS) ---
+st.set_page_config(page_title="Stocks", layout="wide", page_icon="📈")
 
-# Initialize Session States
-if "auth" not in st.session_state: st.session_state.auth = False
-if "page" not in st.session_state: st.session_state.page = "Market Summary"
-if "selected_stock" not in st.session_state: st.session_state.selected_stock = "RELIANCE"
-if "user_email" not in st.session_state: st.session_state.user_email = ""
-
-# --- 2. THE NAVIGATION ENGINE (FIXED) ---
-def nav_to(page_name, stock_name=None):
-    """Safely switches pages and updates selected stock."""
-    st.session_state.page = page_name
-    if stock_name:
-        st.session_state.selected_stock = stock_name
-
-# --- 3. THE EMAIL BOT (OPTIONAL) ---
-def send_email_alert(ticker, price, target, receiver_email):
-    # Requires a Gmail App Password set in Streamlit Secrets
-    sender_email = "your-bot@gmail.com" 
-    password = st.secrets.get("GMAIL_PASS", "") 
+st.markdown("""
+    <style>
+    /* Clean Apple-style Background */
+    .stApp { background-color: #000000; color: white; }
     
-    if not password:
-        return False # Silently fail if no password configured
-        
-    msg = MIMEText(f"Target Hit! {ticker} is at ₹{price}. Your target was ₹{target}.")
-    msg['Subject'] = f"🚀 Stock Alert: {ticker}"
-    msg['From'] = sender_email
-    msg['To'] = receiver_email
-
-    try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(sender_email, password)
-            server.sendmail(sender_email, receiver_email, msg.as_string())
-        return True
-    except:
-        return False
-
-# --- 4. AUTHENTICATION ---
-if not st.session_state.auth:
-    st.title("🔐 FinQuest Pro Access")
-    if st.text_input("Access Key", type="password") == "invest2025":
-        if st.button("Unlock"):
-            st.session_state.auth = True
-            st.rerun()
-    st.stop()
-
-# --- 5. SIDEBAR ---
-with st.sidebar:
-    st.title("📟 Menu")
-    # Using buttons for navigation instead of radio for better 'Click-to-Profile' flow
-    st.button("📊 Market Summary", on_click=nav_to, args=("Market Summary",), use_container_width=True)
-    st.button("📈 Stock Profile", on_click=nav_to, args=("Stock Profile",), use_container_width=True)
-    st.divider()
-    st.caption("Data: 1m Delayed Intraday")
-
-# --- PAGE: MARKET SUMMARY ---
-if st.session_state.page == "Market Summary":
-    st.header("📊 Top Sector Leaders")
-    sectors = {
-        "Banking": ["HDFCBANK", "ICICIBANK", "SBIN"],
-        "IT": ["TCS", "INFY", "WIPRO"],
-        "Energy": ["RELIANCE", "ONGC"]
+    /* Sidebar Watchlist Styling */
+    section[data-testid="stSidebar"] {
+        background-color: #1c1c1e !important;
+        border-right: 1px solid #38383a;
+        width: 300px !important;
     }
     
-    for sector, stocks in sectors.items():
-        st.subheader(sector)
-        cols = st.columns(len(stocks))
-        for i, s in enumerate(stocks):
-            with cols[i]:
-                # CLICKABLE: Takes user to the Stock Profile page
-                st.button(f"View {s}", key=f"btn_{s}", on_click=nav_to, args=("Stock Profile", s))
-
-# --- PAGE: STOCK PROFILE ---
-elif st.session_state.page == "Stock Profile":
-    ticker = st.session_state.selected_stock
-    st.header(f"📈 {ticker} Technical Profile")
-
-    # 1-MINUTE INTRADAY DATA FETCH
-    data = yf.download(f"{ticker}.NS", period="1d", interval="1m", progress=False)
+    /* Metric Styling */
+    [data-testid="stMetricValue"] { font-size: 32px !important; font-weight: 700 !important; color: white !important; }
+    [data-testid="stMetricDelta"] { font-size: 18px !important; }
     
-    if not data.empty:
-        # Fix for multi-index column names
-        if isinstance(data.columns, pd.MultiIndex): data.columns = data.columns.get_level_values(0)
-        
-        ltp = float(data['Close'].iloc[-1])
-        st.metric("Current Live Price", f"₹{ltp:,.2f}")
+    /* Button Styling to look like list items */
+    .stButton>button {
+        width: 100%;
+        background-color: transparent;
+        color: white;
+        border: none;
+        border-bottom: 1px solid #38383a;
+        text-align: left;
+        padding: 15px 10px;
+        border-radius: 0;
+    }
+    .stButton>button:hover { background-color: #2c2c2e; border-bottom: 1px solid #38383a; }
+    </style>
+    """, unsafe_allow_html=True)
 
-        # --- THE BUY ALERT & EMAIL SECTION ---
-        st.divider()
-        col1, col2, col3 = st.columns([2, 2, 1])
-        email_id = col1.text_input("Your Email (Optional)", value=st.session_state.user_email)
-        target = col2.number_input("Buy Price Alert (₹)", value=round(ltp*0.99, 2))
-        
-        if col3.button("Set Alert"):
-            st.session_state.user_email = email_id
+# --- 2. STATE MANAGEMENT ---
+if "selected_ticker" not in st.session_state:
+    st.session_state.selected_ticker = "RELIANCE"
+
+# --- 3. SIDEBAR WATCHLIST ---
+with st.sidebar:
+    st.title("Stocks")
+    search = st.text_input("", placeholder="Search Tickers", label_visibility="collapsed").upper()
+    if search:
+        if st.button(f"🔍 Search: {search}"):
+            st.session_state.selected_ticker = search
+
+    st.markdown("---")
+    
+    # Pre-defined Apple-style Watchlist
+    watchlist = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ZOMATO", "TATAMOTORS", "ICICIBANK"]
+    
+    for stock in watchlist:
+        if st.button(f"**{stock}**", key=f"list_{stock}"):
+            st.session_state.selected_ticker = stock
+
+# --- 4. MAIN DISPLAY (APPLE STOCKS LAYOUT) ---
+ticker = st.session_state.selected_ticker
+data = yf.download(f"{ticker}.NS", period="1d", interval="1m", progress=False)
+
+if not data.empty:
+    # Flatten columns
+    if isinstance(data.columns, pd.MultiIndex): data.columns = data.columns.get_level_values(0)
+    
+    ltp = float(data['Close'].iloc[-1])
+    prev_close = float(data['Open'].iloc[0]) # Start of day
+    change = ltp - prev_close
+    pct_change = (change / prev_close) * 100
+    
+    # Header Section
+    st.title(ticker)
+    st.subheader("National Stock Exchange")
+    
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        st.metric(label="", value=f"₹{ltp:,.2f}", delta=f"{change:+.2f} ({pct_change:+.2f}%)")
+    
+    # 5. THE CHART (CLEAN APPLE TRENDLINE)
+    # Apple uses a clean line chart with a gradient fill
+    fig = go.Figure()
+    
+    # Choose color based on gain/loss
+    line_color = "#30d158" if change >= 0 else "#ff453a" # Apple Green/Red
+    
+    fig.add_trace(go.Scatter(
+        x=data.index, 
+        y=data['Close'], 
+        mode='lines',
+        line=dict(color=line_color, width=3),
+        fill='tozeroy',
+        fillcolor=f'rgba({48 if change >= 0 else 255}, {209 if change >= 0 else 69}, {88 if change >= 0 else 58}, 0.1)',
+        name="Price"
+    ))
+
+    fig.update_layout(
+        plot_bgcolor="black",
+        paper_bgcolor="black",
+        font=dict(color="white"),
+        xaxis=dict(showgrid=False, showticklabels=True, color="#8e8e93"),
+        yaxis=dict(side="right", showgrid=True, gridcolor="#2c2c2e", color="#8e8e93"),
+        height=400,
+        margin=dict(l=0, r=0, t=20, b=0),
+        hovermode="x unified"
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+    # 6. ALERT & INFO SECTION
+    st.markdown("---")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("### 🔔 Price Alert")
+        target = st.number_input("Target Price", value=round(ltp, 2))
+        email = st.text_input("Email ID", placeholder="Enter email for alerts")
+        if st.button("Set Alert"):
+            st.success(f"Alert set for {ticker} at ₹{target}")
             if ltp <= target:
-                st.toast(f"🚨 TARGET HIT! {ticker} is at ₹{ltp}", icon="🚀")
-                st.balloons()
-                send_email_alert(ticker, ltp, target, email_id)
-            else:
-                st.info("Monitoring... I will alert you once hit.")
+                st.toast("🎯 Target Reached!", icon="✅")
+    
+    with c2:
+        st.markdown("### 📊 Market Stats")
+        st.write(f"**Open:** ₹{data['Open'].iloc[0]:,.2f}")
+        st.write(f"**High:** ₹{data['High'].max():,.2f}")
+        st.write(f"**Low:** ₹{data['Low'].min():,.2f}")
+        st.write(f"**Vol:** {data['Volume'].iloc[-1]:,.0f}")
 
-        # --- THE TREND GRAPH (INTRADAY 1M) ---
-        # Moving Average to show "Trendiness"
-        data['TrendLine'] = data['Close'].rolling(window=15).mean()
-        
-        fig = go.Figure()
-        # Area Chart (Live Price)
-        fig.add_trace(go.Scatter(x=data.index, y=data['Close'], fill='tozeroy', 
-                                 line=dict(color='#00d1b2', width=2), name="Live Price"))
-        # Trend Line (MA15)
-        fig.add_trace(go.Scatter(x=data.index, y=data['TrendLine'], 
-                                 line=dict(color='#FF4B4B', width=2, dash='dot'), name="15m Trend"))
-        
-        fig.update_layout(template="plotly_dark", height=450, xaxis_title="Time (Today)", 
-                          margin=dict(l=0, r=0, t=20, b=0))
-        st.plotly_chart(fig, use_container_width=True)
-
-        # AI Suggestion
-        st.info(f"💡 **Suggestion:** Buy {ticker} if price stays above its trend line (Red Dotted).")
+else:
+    st.error("Ticker not found. Please ensure it's a valid NSE code.")
