@@ -3,12 +3,14 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 
-# --- 1. PAGE CONFIGURATION ---
-st.set_page_config(
-    page_title="FinQuest Pro | NSE Dashboard",
-    page_icon="📈",
-    layout="wide"
-)
+# --- 1. PAGE CONFIG & STYLING ---
+st.set_page_config(page_title="FinQuest Pro", layout="wide", page_icon="💎")
+
+st.markdown("""
+    <style>
+    .stMetric { background-color: #ffffff; padding: 10px; border-radius: 10px; border: 1px solid #e6e9ef; }
+    </style>
+    """, unsafe_allow_html=True)
 
 # --- 2. AUTHENTICATION ---
 if "auth" not in st.session_state:
@@ -16,93 +18,103 @@ if "auth" not in st.session_state:
 
 if not st.session_state.auth:
     st.title("🔐 FinQuest Pro Access")
-    password = st.text_input("Enter Access Key", type="password")
+    key = st.text_input("Access Key", type="password")
     if st.button("Unlock Dashboard"):
-        if password == "invest2025":
+        if key == "invest2025":
             st.session_state.auth = True
             st.rerun()
-        else:
-            st.error("Invalid Key. Hint: invest2025")
     st.stop()
 
-# --- 3. NAVIGATION SIDEBAR ---
+# --- 3. SIDEBAR NAVIGATION & MARKET PULSE ---
 with st.sidebar:
-    st.title("💎 Navigation")
-    menu = st.radio("Go to:", ["Market Intelligence", "SIP Architect", "About"])
+    st.title("💎 FinQuest Pro")
+    menu = st.radio("Navigation", ["Market Watcher", "SIP Architect"])
+    
     st.markdown("---")
-    st.caption("Data: 15-min delayed NSE")
-
-# --- 4. MARKET INTELLIGENCE TAB ---
-if menu == "Market Intelligence":
-    st.header("🚀 Market Intelligence")
+    st.subheader("🏢 Top Stocks by Industry")
+    # Categorized Top 10 Stocks
+    industries = {
+        "IT": ["TCS", "INFY"],
+        "Banking": ["HDFCBANK", "ICICIBANK", "SBIN"],
+        "Energy/Oil": ["RELIANCE", "ONGC"],
+        "Consumer": ["HINDUNILVR", "ITC"],
+        "Auto": ["TATA MOTORS"]
+    }
     
-    ticker_input = st.text_input("Enter NSE Ticker (e.g., RELIANCE, TCS)", "RELIANCE").upper()
+    for ind, stocks in industries.items():
+        st.caption(f"**{ind}**")
+        for s in stocks:
+            if st.button(s, key=f"btn_{s}"):
+                st.session_state.selected_ticker = s
+
+# --- 4. MARKET WATCHER LOGIC ---
+if menu == "Market Watcher":
+    st.header("📈 Market Intelligence")
+    
+    # Check if a stock was clicked in sidebar, otherwise default to RELIANCE
+    default_ticker = st.session_state.get("selected_ticker", "RELIANCE")
+    ticker_input = st.text_input("Search NSE Ticker", value=default_ticker).upper()
+    
+    timeframe = st.selectbox("Select Historical View", ["1mo", "6mo", "1y", "5y"], index=2)
+    
+    # Fetch Data
     ticker = f"{ticker_input}.NS"
-    
-    with st.spinner(f"Fetching {ticker_input}..."):
-        # Added auto_adjust=True to fix the FutureWarning
-        data = yf.download(ticker, period="1y", interval="1d", auto_adjust=True, progress=False)
+    data = yf.download(ticker, period=timeframe, interval="1d", auto_adjust=True)
 
-    if data.empty or len(data) < 2:
-        st.error(f"❌ No data found for '{ticker_input}'.")
+    if data.empty:
+        st.error("❌ Data not found. Ensure the ticker is correct (e.g., RELIANCE).")
     else:
-        # FIXING THE TYPEERROR & FUTUREWARNINGS
-        # We use .iloc[-1] and then .item() to ensure we get a plain Python float
-        current_close = float(data['Close'].iloc[-1].item())
-        prev_close = float(data['Close'].iloc[-2].item())
-        day_high = float(data['High'].iloc[-1].item())
-        day_low = float(data['Low'].iloc[-1].item())
-        
-        # Calculate 52W High safely
-        high_52w = float(data['High'].max().item())
-        
-        change = current_close - prev_close
-        pct_change = (change / prev_close) * 100
+        # Extract single values safely
+        current_price = float(data['Close'].iloc[-1].item())
+        prev_price = float(data['Close'].iloc[-2].item())
+        change = current_price - prev_price
+        pct_change = (change / prev_price) * 100
 
-        # KPI Row
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("LTP", f"₹{current_close:,.2f}", f"{pct_change:.2f}%")
-        col2.metric("24h High", f"₹{day_high:,.2f}")
-        col3.metric("24h Low", f"₹{day_low:,.2f}")
-        col4.metric("52W High", f"₹{high_52w:,.2f}")
+        # --- 5. BUYING PERIOD ANALYST (RSI Implementation) ---
+        # Calculate RSI to suggest buying periods
+        delta = data['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
+        current_rsi = rsi.iloc[-1].item()
 
-        # Advanced Charting
-        st.subheader(f"📈 {ticker_input} Price Trend")
-        fig = go.Figure(data=[go.Candlestick(
-            x=data.index[-90:],
-            open=data['Open'],
-            high=data['High'],
-            low=data['Low'],
-            close=data['Close'],
-            name="Price"
-        )])
-        fig.update_layout(
-            template="plotly_white",
-            height=500,
-            xaxis_rangeslider_visible=False,
-            margin=dict(l=20, r=20, t=30, b=20)
-        )
+        # Suggestion Logic
+        if current_rsi < 35:
+            advice = "🟢 **Strong Value Zone:** Stock is 'Oversold'. Good period to consider buying."
+        elif current_rsi > 70:
+            advice = "🔴 **Caution Zone:** Stock is 'Overbought'. High risk to buy now."
+        else:
+            advice = "🟡 **Neutral Zone:** Stock is trading at fair value. Wait for a dip or steady trend."
+
+        # KPI Metrics
+        c1, c2, c3 = st.columns(3)
+        c1.metric("LTP", f"₹{current_price:,.2f}", f"{pct_change:.2f}%")
+        c2.metric("Period High", f"₹{data['High'].max().item():,.2f}")
+        c3.metric("RSI (14d)", f"{current_rsi:.1f}")
+        
+        st.info(advice)
+
+        # --- 6. HISTORICAL GRAPH (Plotly) ---
+        st.subheader(f"Historical Price Action: {ticker_input}")
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=data.index, y=data['Close'], name="Close Price", line=dict(color='#0077B5', width=2)))
+        fig.update_layout(template="plotly_white", height=450, xaxis_rangeslider_visible=True, margin=dict(l=0,r=0,b=0,t=0))
         st.plotly_chart(fig, use_container_width=True)
 
-# --- 5. SIP ARCHITECT TAB ---
+# --- 7. SIP ARCHITECT ---
 elif menu == "SIP Architect":
     st.header("🎯 Wealth Architect")
-    c1, c2 = st.columns([1, 1])
-    with c1:
-        monthly = st.slider("Monthly SIP (₹)", 500, 200000, 10000, step=500)
-        years = st.slider("Tenure (Years)", 1, 40, 15)
-        rate = st.slider("Expected Return (%)", 5, 25, 12)
-
-    i = (rate / 100) / 12
-    n = years * 12
-    fv = monthly * (((1 + i)**n - 1) / i) * (1 + i)
-    
-    with c2:
-        st.subheader("Results")
-        st.metric("Future Value", f"₹{fv:,.0f}")
-        st.info(f"Total Invested: ₹{monthly*n:,.0f} | Gains: ₹{fv - (monthly*n):,.0f}")
-
-# --- 6. ABOUT TAB ---
-elif menu == "About":
-    st.header("ℹ️ Project Info")
-    st.write("Professional Stock Watcher for NSE India. Built with Python & Streamlit.")
+    col1, col2 = st.columns(2)
+    with col1:
+        amt = st.number_input("Monthly SIP (₹)", 500, 500000, 10000)
+        yrs = st.slider("Years", 1, 40, 15)
+        rate = st.slider("Return (%)", 5, 25, 12)
+        
+        i = (rate/100)/12
+        n = yrs * 12
+        fv = amt * (((1 + i)**n - 1) / i) * (1 + i)
+        
+    with col2:
+        st.metric("Expected Corpus", f"₹{fv:,.0f}")
+        st.write(f"Invested: ₹{amt*n:,.0f} | Profit: ₹{fv - (amt*n):,.0f}")
