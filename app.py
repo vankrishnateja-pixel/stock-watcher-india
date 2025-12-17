@@ -19,14 +19,11 @@ st.markdown("""
     section[data-testid="stSidebar"] { background-color: #1c1c1e !important; border-right: 1px solid #38383a; width: 350px !important; }
     .stMetric { background-color: #1c1c1e; border-radius: 12px; padding: 20px; border: 1px solid #38383a; }
     [data-testid="stMetricValue"] { color: white !important; font-size: 32px !important; font-weight: 700 !important; }
-    /* Navigation Button Styling */
     .stButton>button { 
         width: 100%; background-color: transparent; color: white; border: none; 
         border-bottom: 1px solid #38383a; text-align: left; padding: 12px 10px; border-radius: 0;
     }
     .stButton>button:hover { background-color: #2c2c2e; }
-    /* Fix for segmented control (Timeframe) */
-    div[data-testid="stSegmentedControl"] button { background-color: #1c1c1e; color: white; border: 1px solid #38383a; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -38,7 +35,8 @@ def fetch_data(ticker, period="1y", interval="1d"):
     try:
         data = yf.download(ticker, period=period, interval=interval, progress=False)
         if data.empty: return None
-        if isinstance(data.columns, pd.MultiIndex): data.columns = data.columns.get_level_values(0)
+        if isinstance(data.columns, pd.MultiIndex): 
+            data.columns = data.columns.get_level_values(0)
         return data
     except: return None
 
@@ -46,7 +44,7 @@ def fetch_data(ticker, period="1y", interval="1d"):
 index_groups = {
     "🇮🇳 NIFTY 50": ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS", "SBIN.NS", "ITC.NS", "TATAMOTORS.NS"],
     "🇺🇸 S&P 500": ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "BRK-B"],
-    "🌐 GLOBAL": ["BTC-USD", "ETH-USD", "GC=F"] # Bitcoin, Ethereum, Gold
+    "🌐 GLOBAL": ["BTC-USD", "ETH-USD", "GC=F"]
 }
 
 # --- 3. SIDEBAR: WATCHLIST & CLICKABLE INDICES ---
@@ -63,12 +61,10 @@ with st.sidebar:
                 st.session_state.selected_ticker = res['symbol']
                 st.rerun()
 
-    # Clickable Index Lists
     st.markdown("---")
     for group_name, tickers in index_groups.items():
         with st.expander(f"**{group_name}**", expanded=(group_name == "🇮🇳 NIFTY 50")):
             for t in tickers:
-                # Clicking these buttons updates the main view
                 if st.button(f"{t}", key=f"side_{t}"):
                     st.session_state.selected_ticker = t
                     st.rerun()
@@ -87,28 +83,24 @@ if main_data is not None and len(main_data) >= 2:
     change = ltp - prev
     pct = (change / prev) * 100
     
-    # Header Section
     st.title(info.get('longName', ticker))
-    st.caption(f"{ticker} • {info.get('exchange', 'Market')} • {info.get('currency', 'Currency')}")
+    st.caption(f"{ticker} • {info.get('exchange', 'Market')}")
 
     col_price, col_sentiment = st.columns([2, 1])
-    
     with col_price:
         st.metric("Price", f"{info.get('currency', '₹')}{ltp:,.2f}", f"{change:+.2f} ({pct:+.2f}%)")
 
-    # Timeframe Selector (Apple Style)
+    # FIX: Added a default to prevent NoneType Error
     time_frame = st.segmented_control("Range", options=["1D", "1M", "1Y", "5Y"], default="1Y")
+    if not time_frame:
+        time_frame = "1Y"
     
-    # Fetch Chart Data
     c_period = time_frame.lower()
     c_interval = "2m" if time_frame == "1D" else "1d"
     chart_data = fetch_data(ticker, period=c_period, interval=c_interval)
 
     if chart_data is not None:
-        # Chart Color Logic
-        line_color = "#30d158" if pct >= 0 else "#ff453a" # Green vs Red
-        
-        # Professional Area Chart
+        line_color = "#30d158" if pct >= 0 else "#ff453a"
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=chart_data.index, y=chart_data['Close'], mode='lines',
@@ -125,23 +117,26 @@ if main_data is not None and len(main_data) >= 2:
             yaxis=dict(side="right", gridcolor="#2c2c2e", color="#8e8e93"),
             hovermode="x unified"
         )
-        st.plotly_chart(fig, width="stretch")
+        # FIX: Updated width for 2025 compliance
+        st.plotly_chart(fig, width='stretch')
 
-    # --- 5. FUNDAMENTALS & ALERTS ---
-    st.markdown("---")
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Day High", f"{ltp:,.2f}")
-    m2.metric("Day Low", f"{main_data['Low'].iloc[-1]:,.2f}")
-    m3.metric("Mkt Cap", f"{info.get('marketCap', 0)/1e12:.2f}T")
-    m4.metric("PE Ratio", f"{info.get('trailingPE', 'N/A')}")
-
-    # Alert Box
-    with st.expander("🔔 Set Price Notification"):
-        c_alt1, c_alt2 = st.columns(2)
-        target = c_alt1.number_input("Target Price", value=float(ltp))
-        u_email = c_alt2.text_input("Email Address")
-        if st.button("Activate Alert"):
-            st.toast(f"Alert set for {ticker} at {target}", icon="✅")
+    # --- 5. FINANCIALS (SAFE VERSION) ---
+    st.markdown("### 📊 Financials")
+    
+    try:
+        # We fetch financials separately with error handling
+        fin = stock_obj.financials
+        if not fin.empty:
+            # Transpose and pick top 2 metrics
+            plot_df = fin.T[['Total Revenue', 'Net Income']].head(4)
+            fig_fin = px.bar(plot_df, barmode='group', template="plotly_dark",
+                             color_discrete_map={'Total Revenue': '#007aff', 'Net Income': '#30d158'})
+            fig_fin.update_layout(plot_bgcolor="black", paper_bgcolor="black", height=300)
+            st.plotly_chart(fig_fin, width='stretch')
+        else:
+            st.info("Annual financials are currently restricted or unavailable for this ticker.")
+    except Exception:
+        st.info("Detailed financial charts are not available for this specific asset.")
 
 else:
     st.error(f"⚠️ Market data for {ticker} is currently unavailable. Try a different ticker.")
