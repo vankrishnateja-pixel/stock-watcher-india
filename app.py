@@ -13,24 +13,27 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     
-    /* Home Screen Index Grid */
-    .index-card {
-        background: #1C1C1E; border: 1px solid #3A3A3C; border-radius: 12px;
-        padding: 15px; text-align: center; margin-bottom: 10px;
+    /* Clickable Index Cards */
+    div[data-testid="stColumn"] > div > div > .stButton > button {
+        background-color: #1C1C1E !important;
+        border: 2px solid #3A3A3C !important;
+        border-radius: 12px;
+        padding: 20px 10px !important;
+        width: 100%;
+        transition: 0.3s;
     }
-    .index-name { color: #8E8E93; font-size: 0.8rem; letter-spacing: 1px; }
-    .index-val { font-size: 1.2rem; font-weight: 700; color: #007AFF; }
+    div[data-testid="stColumn"] > div > div > .stButton > button:hover {
+        border-color: #007AFF !important;
+        transform: translateY(-2px);
+    }
+    .index-name { color: #8E8E93; font-size: 0.7rem; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 5px;}
+    .index-val { font-size: 1.4rem; font-weight: 700; color: #FFFFFF; }
 
-    /* News & Suggestions */
+    /* AI Suggestion Box */
     .suggestion-box {
-        border: 2px solid #30D158; border-radius: 15px; padding: 20px; 
-        text-align: center; background: rgba(48, 209, 88, 0.1); margin-bottom: 25px;
+        border: 2px solid #30D158; border-radius: 15px; padding: 25px; 
+        text-align: center; background: rgba(48, 209, 88, 0.05); margin-bottom: 30px;
     }
-    .news-card {
-        background: #1C1C1E; border-left: 4px solid #007AFF;
-        border-radius: 8px; padding: 12px; margin-bottom: 10px;
-    }
-    .news-link { color: #FFFFFF; text-decoration: none; font-weight: 600; font-size: 0.95rem; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -43,63 +46,58 @@ def nav(target, ticker=None):
     if ticker: st.session_state.ticker = ticker
     st.rerun()
 
-# --- 2. HOME PAGE (Indices + Search) ---
+# --- 2. HOME PAGE (Clickable Indices) ---
 if st.session_state.page == "home":
-    st.markdown("<div style='text-align:center; padding:20px;'><h1 style='margin:0;'>FinQuest Pro</h1><p style='color:#8E8E93;'>By Krishna</p></div>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:center; padding:30px 0;'><h1 style='letter-spacing:-1px; margin:0;'>FinQuest Pro</h1><p style='color:#8E8E93; text-transform:uppercase; font-size:0.7rem; letter-spacing:3px;'>By Krishna</p></div>", unsafe_allow_html=True)
     
     # Indices Grid
     indices = {"NIFTY 50": "^NSEI", "SENSEX": "^BSESN", "S&P 500": "^GSPC", "NASDAQ": "^IXIC"}
     cols = st.columns(4)
     for i, (name, sym) in enumerate(indices.items()):
         with cols[i]:
+            # Fetching price for the button label
             try:
-                val = yf.download(sym, period="1d", progress=False)['Close'].iloc[-1]
-                st.markdown(f"<div class='index-card'><div class='index-name'>{name}</div><div class='index-val'>{val:,.0f}</div></div>", unsafe_allow_html=True)
-            except: st.markdown(f"<div class='index-card'><div class='index-name'>{name}</div><div class='index-val'>---</div></div>", unsafe_allow_html=True)
+                price = yf.Ticker(sym).fast_info['last_price']
+                label = f"{name}\n\n{price:,.0f}"
+            except: label = f"{name}\n\n---"
+            
+            if st.button(label, key=f"btn_{sym}"):
+                nav("detail", sym)
 
     st.write("###")
-    search = st.text_input("", placeholder="Search Ticker (e.g. NVDA, TCS.NS)...", label_visibility="collapsed")
+    search = st.text_input("", placeholder="Search Global Ticker (e.g. NVDA, TCS.NS)...", label_visibility="collapsed")
     if search: nav("detail", search.upper())
 
-# --- 3. DETAIL PAGE (Suggestions -> Chart -> News -> Financials) ---
+# --- 3. DETAIL PAGE (Suggestion -> Chart -> Financials) ---
 elif st.session_state.page == "detail":
     t = st.session_state.ticker
     stock = yf.Ticker(t)
-    if st.button("← BACK"): nav("home")
+    if st.button("← BACK TO TERMINAL"): nav("home")
     
     st.title(t)
     
-    # A. Suggestion Box (Top)
+    # A. Suggestion Box
     df = stock.history(period="1y")
     if not df.empty:
         ma50 = df['Close'].rolling(window=50).mean().iloc[-1]
         st.markdown(f"""<div class='suggestion-box'>
-            <div style='color:#30D158; font-weight:800; font-size:0.7rem; letter-spacing:2px;'>AI SIGNAL</div>
-            <div style='font-size:2rem; font-weight:700;'>₹{ma50:,.2f}</div>
-            <div style='color:#8E8E93; font-size:0.8rem;'>Recommended Entry Point (50-DMA)</div>
+            <div style='color:#30D158; font-weight:800; font-size:0.7rem; letter-spacing:2px;'>MARKET SIGNAL</div>
+            <div style='font-size:2.5rem; font-weight:700;'>{ma50:,.2f}</div>
+            <div style='color:#8E8E93; font-size:0.8rem;'>Recommended Institutional Support (50-DMA)</div>
         </div>""", unsafe_allow_html=True)
 
-        # B. Trend Chart
-        fig = go.Figure(data=[go.Scatter(x=df.index, y=df['Close'], line=dict(color='#007AFF', width=2))])
-        fig.update_layout(template="plotly_dark", height=300, margin=dict(l=0,r=0,t=0,b=0), xaxis_showgrid=False, yaxis_showgrid=False)
+        # B. Trend Chart (2025 Standard)
+        fig = go.Figure(data=[go.Scatter(x=df.index, y=df['Close'], line=dict(color='#007AFF', width=2), fill='tozeroy', fillcolor='rgba(0,122,255,0.05)')])
+        fig.update_layout(template="plotly_dark", height=350, margin=dict(l=0,r=0,t=0,b=0), xaxis_showgrid=False, yaxis_showgrid=False, paper_bgcolor='black', plot_bgcolor='black')
         st.plotly_chart(fig, width="stretch")
 
-    # C. External News Links
-    st.write("### Latest Intelligence")
-    news = stock.news
-    if news:
-        for item in news[:4]:
-            url = item.get('link', item.get('url', '#'))
-            st.markdown(f"""<div class='news-card'>
-                <a class='news-link' href='{url}' target='_blank'>{item.get('title', 'Market Update')}</a>
-                <div style='color:#8E8E93; font-size:0.75rem; margin-top:4px;'>{item.get('publisher', 'Source')}</div>
-            </div>""", unsafe_allow_html=True)
-
-    # D. Financials (At the Bottom)
-    st.write("### Financial Performance")
+    # C. Financials (At the bottom, in Millions)
+    st.write("### Financial Performance (Values in Millions)")
     try:
         fin = stock.financials
         if not fin.empty:
-            st.dataframe(fin.iloc[:, :3], width="stretch")
-        else: st.info("Annual reporting data currently unavailable for this ticker.")
-    except: st.error("Financial feed error.")
+            # Convert to millions and format
+            fin_millions = fin.iloc[:, :4] / 1_000_000
+            st.dataframe(fin_millions.style.format("{:,.2f}M"), width="stretch")
+        else: st.info("Financial reporting unavailable for this symbol.")
+    except: st.error("Could not retrieve financial data.")
