@@ -25,9 +25,7 @@ st.markdown("""
     }
     div[data-testid="stColumn"] > div > div > .stButton > button:hover {
         border-color: #007AFF !important;
-        transform: translateY(-2px);
     }
-
     .suggestion-box {
         border: 2px solid #30D158; border-radius: 15px; padding: 25px; 
         text-align: center; background: rgba(48, 209, 88, 0.05); margin-bottom: 30px;
@@ -44,62 +42,66 @@ def nav(target, ticker=None):
     if ticker: st.session_state.ticker = ticker
     st.rerun()
 
-# --- 2. INDEX CONSTITUENTS DATA ---
-# Pre-defined top stocks for each index (2025 weights)
+# --- 2. INDEX CONSTITUENTS ---
 INDEX_DATA = {
     "NIFTY 50": [
-        {"Symbol": "HDFCBANK.NS", "Company": "HDFC Bank", "Weight": "13.71%"},
-        {"Symbol": "RELIANCE.NS", "Company": "Reliance Industries", "Weight": "10.12%"},
-        {"Symbol": "ICICIBANK.NS", "Company": "ICICI Bank", "Weight": "9.41%"},
-        {"Symbol": "BHARTIARTL.NS", "Company": "Bharti Airtel", "Weight": "6.07%"},
-        {"Symbol": "TCS.NS", "Company": "TCS", "Weight": "5.62%"}
+        {"Symbol": "HDFCBANK.NS", "Company": "HDFC Bank", "Weight": "13.7%"},
+        {"Symbol": "RELIANCE.NS", "Company": "Reliance Industries", "Weight": "10.1%"},
+        {"Symbol": "ICICIBANK.NS", "Company": "ICICI Bank", "Weight": "9.4%"},
+        {"Symbol": "TCS.NS", "Company": "TCS", "Weight": "5.6%"}
     ],
     "SENSEX": [
-        {"Symbol": "HDFCBANK.NS", "Company": "HDFC Bank", "Weight": "14.80%"},
-        {"Symbol": "RELIANCE.NS", "Company": "Reliance Ind.", "Weight": "10.10%"},
-        {"Symbol": "ICICIBANK.NS", "Company": "ICICI Bank", "Weight": "9.50%"},
-        {"Symbol": "BHARTIARTL.NS", "Company": "Bharti Airtel", "Weight": "6.20%"},
-        {"Symbol": "INFY.NS", "Company": "Infosys", "Weight": "5.40%"}
+        {"Symbol": "HDFCBANK.NS", "Company": "HDFC Bank", "Weight": "14.8%"},
+        {"Symbol": "RELIANCE.NS", "Company": "Reliance Ind.", "Weight": "10.1%"},
+        {"Symbol": "ICICIBANK.NS", "Company": "ICICI Bank", "Weight": "9.5%"},
+        {"Symbol": "INFY.NS", "Company": "Infosys", "Weight": "5.4%"}
     ],
     "S&P 500": [
-        {"Symbol": "NVDA", "Company": "NVIDIA", "Weight": "7.04%"},
-        {"Symbol": "AAPL", "Company": "Apple Inc.", "Weight": "6.61%"},
-        {"Symbol": "MSFT", "Company": "Microsoft", "Weight": "5.77%"},
-        {"Symbol": "AMZN", "Company": "Amazon", "Weight": "3.88%"},
-        {"Symbol": "GOOGL", "Company": "Alphabet (A)", "Weight": "3.12%"}
+        {"Symbol": "NVDA", "Company": "NVIDIA", "Weight": "7.0%"},
+        {"Symbol": "AAPL", "Company": "Apple Inc.", "Weight": "6.6%"},
+        {"Symbol": "MSFT", "Company": "Microsoft", "Weight": "5.7%"},
+        {"Symbol": "AMZN", "Company": "Amazon", "Weight": "3.8%"}
     ],
     "NASDAQ": [
-        {"Symbol": "NVDA", "Company": "NVIDIA", "Weight": "13.03%"},
-        {"Symbol": "AAPL", "Company": "Apple Inc.", "Weight": "12.24%"},
-        {"Symbol": "MSFT", "Company": "Microsoft", "Weight": "10.68%"},
-        {"Symbol": "AMZN", "Company": "Amazon", "Weight": "7.18%"},
-        {"Symbol": "GOOGL", "Company": "Alphabet (A)", "Weight": "5.78%"}
+        {"Symbol": "NVDA", "Company": "NVIDIA", "Weight": "13.0%"},
+        {"Symbol": "AAPL", "Company": "Apple Inc.", "Weight": "12.2%"},
+        {"Symbol": "MSFT", "Company": "Microsoft", "Weight": "10.6%"},
+        {"Symbol": "AMZN", "Company": "Amazon", "Weight": "7.1%"}
     ]
 }
 
-# --- 3. HOME PAGE ---
+# --- 3. HOME PAGE (Clickable Rows) ---
 if st.session_state.page == "home":
-    st.markdown("<div style='text-align:center; padding:30px 0;'><h1 style='margin:0;'>FinQuest Pro</h1><p style='color:#8E8E93;'>By Krishna</p></div>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:center; padding:30px 0;'><h1 style='margin:0;'>FinQuest Pro</h1><p style='color:#8E8E93;'>Terminal v2025</p></div>", unsafe_allow_html=True)
     
     indices = {"NIFTY 50": "^NSEI", "SENSEX": "^BSESN", "S&P 500": "^GSPC", "NASDAQ": "^IXIC"}
     cols = st.columns(4)
     
     for i, (name, sym) in enumerate(indices.items()):
         with cols[i]:
-            try:
-                price = yf.Ticker(sym).fast_info['last_price']
-                label = f"{name}\n{price:,.0f}"
-            except: label = f"{name}\n---"
-            
-            if st.button(label, key=f"btn_{sym}"):
+            if st.button(f"{name}", key=f"btn_{sym}"):
                 nav("detail", sym)
             
-            # Index Table
+            # Create interactive table
             df_index = pd.DataFrame(INDEX_DATA[name])
-            st.dataframe(df_index, hide_index=True, use_container_width=True)
+            
+            # Capture clicks using on_select
+            event = st.dataframe(
+                df_index, 
+                hide_index=True, 
+                width=None,
+                on_select="rerun", # Forces app to refresh when a row is clicked
+                selection_mode="single-row",
+                key=f"table_{name}"
+            )
+            
+            # Logic to handle selection
+            if event.selection.rows:
+                selected_row_idx = event.selection.rows[0]
+                selected_ticker = df_index.iloc[selected_row_idx]['Symbol']
+                nav("detail", selected_ticker)
 
-    st.write("###")
-    search = st.text_input("", placeholder="Search Ticker (e.g. TSLA, TCS.NS)...", label_visibility="collapsed")
+    search = st.text_input("", placeholder="Search Ticker...", label_visibility="collapsed")
     if search: nav("detail", search.upper())
 
 # --- 4. DETAIL PAGE ---
@@ -109,27 +111,21 @@ elif st.session_state.page == "detail":
     if st.button("← BACK"): nav("home")
     
     st.title(t)
-    
     df = stock.history(period="1y")
+    
     if not df.empty:
-        # A. Signal
         ma50 = df['Close'].rolling(window=50).mean().iloc[-1]
-        st.markdown(f"""<div class='suggestion-box'>
-            <div style='color:#30D158; font-weight:800; font-size:0.7rem; letter-spacing:2px;'>MARKET SIGNAL</div>
-            <div style='font-size:2.5rem; font-weight:700;'>{ma50:,.2f}</div>
-            <div style='color:#8E8E93; font-size:0.8rem;'>50-Day Moving Average Support</div>
-        </div>""", unsafe_allow_html=True)
+        st.markdown(f"<div class='suggestion-box'><div style='color:#30D158; font-weight:800; font-size:0.7rem; letter-spacing:2px;'>SIGNAL</div><div style='font-size:2.5rem; font-weight:700;'>{ma50:,.2f}</div></div>", unsafe_allow_html=True)
 
-        # B. Chart
-        fig = go.Figure(data=[go.Scatter(x=df.index, y=df['Close'], line=dict(color='#007AFF', width=2), fill='tozeroy', fillcolor='rgba(0,122,255,0.05)')])
-        fig.update_layout(template="plotly_dark", height=350, margin=dict(l=0,r=0,t=0,b=0), xaxis_showgrid=False, yaxis_showgrid=False, paper_bgcolor='black', plot_bgcolor='black')
-        st.plotly_chart(fig, use_container_width=True)
+        fig = go.Figure(data=[go.Scatter(x=df.index, y=df['Close'], line=dict(color='#007AFF', width=2))])
+        fig.update_layout(template="plotly_dark", height=300, margin=dict(l=0,r=0,t=0,b=0), paper_bgcolor='black', plot_bgcolor='black')
+        st.plotly_chart(fig, width="stretch")
 
-    # C. Financials in Millions
     st.write("### Financial Performance (Millions)")
     try:
         fin = stock.financials
         if not fin.empty:
+            # Displaying in Millions
             fin_millions = fin.iloc[:, :4] / 1_000_000
-            st.dataframe(fin_millions.style.format("{:,.2f}M"), use_container_width=True)
-    except: st.info("Financial data feed unavailable.")
+            st.dataframe(fin_millions.style.format("{:,.2f}M"), width="stretch")
+    except: st.info("Financial data not available.")
