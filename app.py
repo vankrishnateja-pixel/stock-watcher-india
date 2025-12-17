@@ -3,14 +3,14 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 
-# --- 1. PAGE CONFIG & THEME ---
-st.set_page_config(page_title="FinQuest Terminal", layout="wide", page_icon="📈")
+# --- 1. PAGE CONFIG ---
+st.set_page_config(page_title="FinQuest Terminal Pro", layout="wide", page_icon="📈")
 
-# Professional Styling: Removing padding and centering metrics
+# Custom CSS for a clean, dark-themed professional look
 st.markdown("""
     <style>
-    .metric-card { background-color: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #eee; text-align: center; }
-    .stTable { font-size: 14px; }
+    .stMetric { background-color: #f0f2f6; padding: 15px; border-radius: 10px; }
+    .main { background-color: #ffffff; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -19,98 +19,102 @@ if "auth" not in st.session_state:
     st.session_state.auth = False
 
 if not st.session_state.auth:
-    st.title("🔐 FinQuest Terminal Access")
-    key = st.text_input("Access Key", type="password")
-    if st.button("Initialize Terminal"):
+    st.title("🔐 Terminal Access")
+    key = st.text_input("Enter Access Key", type="password")
+    if st.button("Initialize"):
         if key == "invest2025":
             st.session_state.auth = True
             st.rerun()
     st.stop()
 
-# --- 3. SIDEBAR NAVIGATION ---
-with st.sidebar:
-    st.title("📟 Terminal Menu")
-    menu = st.radio("Switch View", ["Market Watcher", "SIP Planner"])
-    st.markdown("---")
-    st.caption("Status: Connected to NSE (15m Delay)")
+# --- 3. INDUSTRY DIRECTORY ---
+st.title("📟 Market Intelligence Terminal")
 
-# --- 4. MARKET WATCHER ---
-if menu == "Market Watcher":
-    st.header("🏢 Industry Snapshot")
+with st.expander("📂 Industry Directory (Select a Stock to View Profile)", expanded=True):
+    industry_map = {
+        "Banking": ["HDFCBANK", "ICICIBANK", "SBIN"],
+        "IT Services": ["TCS", "INFY", "WIPRO"],
+        "Energy": ["RELIANCE", "ONGC", "BPCL"],
+        "Consumer": ["HINDUNILVR", "ITC", "TATACONSUM"],
+        "Automobile": ["TATAMOTORS", "M&M", "MARUTI"]
+    }
     
-    # 1. Industry Split in Tabular Structure
-    industry_data = [
-        {"Industry": "Banking", "Top Stocks": "HDFCBANK, ICICIBANK, SBIN"},
-        {"Industry": "IT Services", "Top Stocks": "TCS, INFY, WIPRO"},
-        {"Industry": "Energy", "Top Stocks": "RELIANCE, ONGC, BPCL"},
-        {"Industry": "Consumer", "Top Stocks": "HINDUNILVR, ITC, TATACONSUM"},
-        {"Industry": "Automobile", "Top Stocks": "TATAMOTORS, M&M, MARUTI"}
-    ]
-    st.table(pd.DataFrame(industry_data))
+    # Create columns for a tabular look
+    cols = st.columns(len(industry_map))
+    selected_stock = st.session_state.get("current_ticker", "RELIANCE")
 
-    st.markdown("---")
+    for i, (industry, stocks) in enumerate(industry_map.items()):
+        with cols[i]:
+            st.markdown(f"**{industry}**")
+            for s in stocks:
+                if st.button(f"view {s}", key=f"btn_{s}"):
+                    st.session_state.current_ticker = s
+                    st.rerun()
+
+st.divider()
+
+# --- 4. INDIVIDUAL STOCK PROFILE ---
+ticker_to_load = st.session_state.get("current_ticker", "RELIANCE")
+st.header(f"📊 Stock Profile: {ticker_to_load}")
+
+# Timeframe Selector
+timeframe = st.segmented_control("Select Timeframe", options=["1mo", "6mo", "1y", "5y"], default="1y")
+
+# Fetch Data
+ticker_ns = f"{ticker_to_load}.NS"
+data = yf.download(ticker_ns, period=timeframe, interval="1d", auto_adjust=True)
+
+if not data.empty:
+    # Calculations
+    ltp = data['Close'].iloc[-1].item()
+    prev_close = data['Close'].iloc[-2].item()
+    change_pct = ((ltp - prev_close) / prev_close) * 100
     
-    # 2. Search and Intelligence
-    col_search, col_time = st.columns([2, 1])
-    ticker_input = col_search.text_input("Enter Ticker to Analyze", "RELIANCE").upper()
-    timeframe = col_time.selectbox("History", ["1mo", "6mo", "1y", "2y"], index=2)
+    # Technical: RSI for Buying Suggestions
+    delta = data['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    current_rsi = rsi.iloc[-1].item()
+
+    # Insight Logic
+    if current_rsi < 30: insight, color = "PROBABLE BUY (Oversold)", "green"
+    elif current_rsi > 70: insight, color = "PROBABLE SELL (Overbought)", "red"
+    else: insight, color = "HOLD / NEUTRAL", "gray"
+
+    # Display Metrics
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Current Price", f"₹{ltp:,.2f}", f"{change_pct:.2f}%")
+    m2.metric("RSI (14-Day)", f"{current_rsi:.1f}")
+    m3.markdown(f"**Buying Period Suggestion:** <br><h3 style='color:{color}; margin:0;'>{insight}</h3>", unsafe_allow_html=True)
+
+    # --- 5. IMPROVED TREND LINE CHART ---
+    st.subheader("Historical Trend Line")
     
-    ticker = f"{ticker_input}.NS"
-    data = yf.download(ticker, period=timeframe, interval="1d", auto_adjust=True)
+    fig = go.Figure()
+    # Adding a filled area under the line for better visibility
+    fig.add_trace(go.Scatter(
+        x=data.index, 
+        y=data['Close'], 
+        mode='lines',
+        line=dict(color='#1f77b4', width=3), # Bold line
+        fill='tozeroy', # Shaded area below the line
+        fillcolor='rgba(31, 119, 180, 0.1)', # Very light blue shade
+        name="Close Price"
+    ))
 
-    if not data.empty:
-        # Technical Logic (RSI)
-        delta = data['Close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / loss
-        rsi = 100 - (100 / (1 + rs))
-        current_rsi = rsi.iloc[-1].item()
+    fig.update_layout(
+        template="plotly_white",
+        hovermode="x unified",
+        xaxis=dict(showgrid=False, title="Date"),
+        yaxis=dict(showgrid=True, gridcolor='#f0f0f0', title="Price (₹)"),
+        margin=dict(l=0, r=0, t=10, b=0),
+        height=500
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
 
-        # Suggestion Logic
-        if current_rsi < 35:
-            status, color = "GOOD TIME TO BUY (Oversold)", "green"
-        elif current_rsi > 70:
-            status, color = "HIGH RISK (Overbought)", "red"
-        else:
-            status, color = "NEUTRAL (Fair Value)", "orange"
-
-        # KPIs
-        ltp = data['Close'].iloc[-1].item()
-        change = ((ltp / data['Close'].iloc[-2].item()) - 1) * 100
-        
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Current Price", f"₹{ltp:,.2f}", f"{change:.2f}%")
-        c2.metric("RSI Level", f"{current_rsi:.1f}")
-        c3.markdown(f"**Buying Insight:** <br><span style='color:{color}; font-weight:bold;'>{status}</span>", unsafe_allow_html=True)
-
-        # 3. Clean Line Chart (No dots/values)
-        st.subheader(f"Historical Trend: {ticker_input}")
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=data.index, 
-            y=data['Close'], 
-            mode='lines', # Strict line mode
-            line=dict(color='#0077B5', width=2),
-            name="Closing Price"
-        ))
-        fig.update_layout(
-            template="plotly_white",
-            height=400,
-            xaxis=dict(showgrid=False),
-            yaxis=dict(showgrid=True, gridcolor='#f0f0f0'),
-            margin=dict(l=0, r=0, t=0, b=0)
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.error("Invalid Ticker. Please use standard NSE codes.")
-
-# --- 5. SIP PLANNER ---
 else:
-    st.header("🎯 Capital Growth Planner")
-    # ... (Standard SIP Logic kept clean)
-    amt = st.number_input("Monthly Contribution (₹)", 5000)
-    yrs = st.slider("Duration (Years)", 1, 30, 10)
-    # Simple calculation display
-    fv = amt * (((1 + 0.01)**(yrs*12) - 1) / 0.01) # 12% fixed for clean UI
-    st.metric("Estimated Wealth", f"₹{fv:,.0f}")
+    st.error("Ticker data not available. Please try a different symbol.")
+    
