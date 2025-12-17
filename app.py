@@ -13,6 +13,14 @@ st.markdown("""
     .stDeployButton {display:none;}
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+    
+    /* Search Bar Styling */
+    .stTextInput>div>div>input {
+        background-color: #1c1c1e; color: white; border: 1px solid #38383a;
+        border-radius: 12px; padding: 10px;
+    }
+    
+    /* Button Styling */
     .stButton>button {
         width: 100%; border-radius: 15px; height: 3.5em; font-size: 1.1em;
         background-color: #1C1C1E; border: 1px solid #38383a; color: white;
@@ -20,7 +28,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. NAVIGATION & DATA ---
+# --- 2. GLOBAL SEARCH & NAVIGATION ---
 if "page" not in st.session_state: st.session_state.page = "home"
 if "ticker" not in st.session_state: st.session_state.ticker = "RELIANCE.NS"
 
@@ -28,6 +36,12 @@ def nav(target, ticker=None):
     st.session_state.page = target
     if ticker: st.session_state.ticker = ticker
     st.rerun()
+
+# SEARCH BAR - Appears on every screen
+query = st.text_input("🔍 Search Ticker (e.g. TSLA, TCS.NS)", placeholder="Enter symbol...", key="global_search")
+if query:
+    if st.button(f"Go to {query.upper()}"):
+        nav("detail", query.upper())
 
 def get_clean_data(ticker, period="1y"):
     df = yf.download(ticker, period=period, progress=False)
@@ -38,7 +52,7 @@ def get_clean_data(ticker, period="1y"):
 # --- 3. PAGE: LANDING ---
 if st.session_state.page == "home":
     st.title("FinQuest Pro")
-    st.write("I am **Krishna**, the creator of FinQuest Pro. Use the shortcuts below to explore markets.")
+    st.write("I am **Krishna**, the creator of FinQuest Pro. Quick-access markets are below.")
     
     st.markdown("---")
     col1, col2 = st.columns(2)
@@ -60,45 +74,31 @@ elif st.session_state.page in ["global", "nifty", "sp500", "sensex"]:
     for t in lists[st.session_state.page]:
         if st.button(f"Analyze {t}", key=f"btn_{t}"): nav("detail", t)
 
-# --- 5. PAGE: STOCK DETAIL (RESTORED TREND CHART) ---
+# --- 5. PAGE: STOCK DETAIL (CHART + FINANCIALS) ---
 elif st.session_state.page == "detail":
     t = st.session_state.ticker
     if st.button("← Back"): nav("home")
     
-    # Restored Trend Chart Logic
     df = get_clean_data(t)
     if not df.empty:
         st.subheader(f"{t} Price Trend")
-        
-        # Color logic: Green if price is up today, Red if down
         change = df['Close'].iloc[-1] - df['Close'].iloc[-2]
         line_color = "#30d158" if change >= 0 else "#ff453a"
         
         fig_trend = go.Figure()
-        fig_trend.add_trace(go.Scatter(
-            x=df.index, y=df['Close'], mode='lines',
-            line=dict(color=line_color, width=3),
-            fill='tozeroy',
-            fillcolor=f"rgba({(48 if change >= 0 else 255)}, {(209 if change >= 0 else 69)}, {(88 if change >= 0 else 58)}, 0.1)"
-        ))
-        fig_trend.update_layout(
-            template="plotly_dark", plot_bgcolor="black", paper_bgcolor="black",
-            height=350, margin=dict(l=0, r=0, t=10, b=0),
-            xaxis=dict(showgrid=False), yaxis=dict(side="right", gridcolor="#2c2c2e")
-        )
+        fig_trend.add_trace(go.Scatter(x=df.index, y=df['Close'], line=dict(color=line_color, width=3), fill='tozeroy'))
+        fig_trend.update_layout(template="plotly_dark", plot_bgcolor="black", paper_bgcolor="black", height=350, margin=dict(l=0, r=0, t=10, b=0))
         st.plotly_chart(fig_trend, width='stretch')
 
-        # Financials Bar Chart (Grouped)
         st.markdown("---")
         st.subheader("📊 Financial Growth")
-        stock = yf.Ticker(t)
         try:
+            stock = yf.Ticker(t)
             fin = stock.financials.T[['Total Revenue', 'Net Income']].head(4)
-            fig_fin = px.bar(fin, barmode='group', template="plotly_dark",
-                             color_discrete_map={'Total Revenue': '#007aff', 'Net Income': '#30d158'})
+            fig_fin = px.bar(fin, barmode='group', template="plotly_dark", color_discrete_map={'Total Revenue': '#007aff', 'Net Income': '#30d158'})
             fig_fin.update_layout(plot_bgcolor="black", paper_bgcolor="black", height=300)
             st.plotly_chart(fig_fin, width='stretch')
         except:
-            st.info("Financial statements not available for this ticker.")
+            st.info("Financials unavailable.")
     else:
-        st.error("No data found for this stock symbol.")
+        st.error(f"Ticker '{t}' not found. Please check the symbol.")
