@@ -2,127 +2,116 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 
-# --- 1. APPLE STOCKS DESIGN ---
-st.set_page_config(page_title="Stocks", layout="wide", page_icon="📈")
+# --- 1. PREMIUM DARK UI ---
+st.set_page_config(page_title="FinQuest Pro", layout="wide")
 
 st.markdown("""
     <style>
     .stApp { background-color: #000000; color: white; }
-    section[data-testid="stSidebar"] {
-        background-color: #1c1c1e !important;
-        border-right: 1px solid #38383a;
-        width: 350px !important;
-    }
-    [data-testid="stMetricValue"] { font-size: 32px !important; font-weight: 700 !important; color: white !important; }
-    .stButton>button {
-        width: 100%;
-        background-color: transparent;
-        color: white;
-        border: none;
-        border-bottom: 1px solid #38383a;
-        text-align: left;
-        padding: 15px 10px;
-        border-radius: 0;
-    }
+    section[data-testid="stSidebar"] { background-color: #1c1c1e !important; border-right: 1px solid #38383a; width: 350px !important; }
+    .stMetric { background-color: #1c1c1e; border-radius: 10px; padding: 15px; border: 1px solid #38383a; }
+    [data-testid="stMetricValue"] { color: white !important; font-size: 28px !important; }
+    .stButton>button { width: 100%; background-color: transparent; color: white; border: none; border-bottom: 1px solid #38383a; text-align: left; padding: 15px 10px; }
     .stButton>button:hover { background-color: #2c2c2e; }
-    /* Style for the search result selection */
-    div[data-baseweb="select"] { background-color: #2c2c2e; border-radius: 8px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. SEARCH LOGIC ---
-def search_stocks(query):
-    """Uses yfinance to find tickers based on company names."""
-    try:
-        search = yf.Search(query, max_results=8)
-        # Filter for stocks/equities and format for the dropdown
-        results = []
-        for quote in search.quotes:
-            display_name = f"{quote['symbol']} - {quote.get('shortname', 'Unknown')}"
-            results.append({"symbol": quote['symbol'], "display": display_name})
-        return results
-    except Exception:
-        return []
-
-# --- 3. STATE MANAGEMENT ---
+# --- 2. STATE & SEARCH ---
 if "selected_ticker" not in st.session_state:
     st.session_state.selected_ticker = "RELIANCE.NS"
 
-# --- 4. SIDEBAR WATCHLIST & SEARCH ---
+def search_stocks(query):
+    try:
+        search = yf.Search(query, max_results=5)
+        return [{"symbol": q['symbol'], "display": f"{q['symbol']} - {q.get('shortname', '')}"} for q in search.quotes]
+    except: return []
+
+# --- 3. SIDEBAR (Watchlist & Heatmap) ---
 with st.sidebar:
-    st.title("Stocks")
+    st.title("FinQuest Pro")
     
-    # Company Name Search Box
-    search_query = st.text_input("Search Company Name", placeholder="e.g. Apple or Tata Motors")
-    
-    if search_query:
-        matches = search_stocks(search_query)
-        if matches:
-            options = {m['display']: m['symbol'] for m in matches}
-            selected_from_search = st.selectbox("Select Result:", options.keys(), index=None, placeholder="Choose a company...")
-            if selected_from_search:
-                st.session_state.selected_ticker = options[selected_from_search]
-        else:
-            st.caption("No matches found.")
+    # Search
+    sq = st.text_input("Search", placeholder="Company or Ticker...")
+    if sq:
+        results = search_stocks(sq)
+        for r in results:
+            if st.button(r['display'], key=f"search_{r['symbol']}"):
+                st.session_state.selected_ticker = r['symbol']
+
+    st.markdown("### 🔥 Market Heatmap")
+    indices = {"Nifty 50": "^NSEI", "S&P 500": "^GSPC", "Nasdaq": "^IXIC"}
+    for name, sym in indices.items():
+        idx_data = yf.Ticker(sym).history(period="2d")
+        if not idx_data.empty:
+            change = ((idx_data['Close'].iloc[-1] / idx_data['Close'].iloc[-2]) - 1) * 100
+            color = "#30d158" if change >= 0 else "#ff453a"
+            st.markdown(f"{name} <span style='color:{color}; float:right;'>{change:+.2f}%</span>", unsafe_allow_html=True)
 
     st.markdown("---")
-    st.subheader("Watchlist")
-    watchlist = ["RELIANCE.NS", "AAPL", "TSLA", "TCS.NS", "NVDA", "ZOMATO.NS"]
-    for stock in watchlist:
-        if st.button(f"**{stock}**"):
-            st.session_state.selected_ticker = stock
+    st.subheader("My Watchlist")
+    for s in ["RELIANCE.NS", "TCS.NS", "AAPL", "NVDA", "TSLA", "ZOMATO.NS"]:
+        if st.button(f"**{s}**"): st.session_state.selected_ticker = s
 
-# --- 5. DATA FETCHING & DISPLAY ---
+# --- 4. MAIN DASHBOARD ---
 ticker = st.session_state.selected_ticker
-stock_obj = yf.Ticker(ticker)
-data = stock_obj.history(period="1d", interval="2m")
+stock = yf.Ticker(ticker)
+data = stock.history(period="1y", interval="1d")
 
 if not data.empty:
-    # Get Metadata
-    info = stock_obj.info
-    long_name = info.get('longName', ticker)
-    
-    # Calculate Changes
+    info = stock.info
     ltp = data['Close'].iloc[-1]
-    open_price = data['Open'].iloc[0]
-    change = ltp - open_price
-    pct_change = (change / open_price) * 100
-    
-    # Header
-    st.title(long_name)
-    st.caption(f"{ticker} • {info.get('exchange', 'Market')}")
-    
-    col1, _ = st.columns([1, 3])
-    with col1:
-        st.metric(label="", value=f"{info.get('currency', '₹')}{ltp:,.2f}", 
-                  delta=f"{change:+.2f} ({pct_change:+.2f}%)")
+    change = ltp - data['Close'].iloc[-2]
+    pct = (change / data['Close'].iloc[-2]) * 100
 
-    # Clean Apple Chart
-    line_color = "#30d158" if change >= 0 else "#ff453a"
+    # Header Row
+    st.title(info.get('longName', ticker))
+    c1, c2, c3 = st.columns([2, 1, 1])
+    c1.metric("", f"{info.get('currency', '₹')}{ltp:,.2f}", f"{pct:+.2f}%")
+    
+    # AI Sentiment Gauge
+    # RSI calculation for sentiment
+    delta = data['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+    rsi = 100 - (100 / (1 + (gain/loss))).iloc[-1]
+    
+    sentiment = "Bullish 🚀" if rsi > 55 else "Bearish 📉" if rsi < 45 else "Neutral ⚖️"
+    c2.metric("Market Sentiment", sentiment, f"RSI: {rsi:.1f}")
+
+    # --- 5. THE CHART ---
+    res = st.segmented_control("Timeframe", options=["1D", "1M", "1Y", "5Y"], default="1Y")
+    chart_data = stock.history(period=res.lower(), interval="1m" if res=="1D" else "1d")
+    
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=data.index, y=data['Close'], mode='lines',
-        line=dict(color=line_color, width=3),
-        fill='tozeroy',
-        fillcolor=f'rgba({48 if change >= 0 else 255}, {209 if change >= 0 else 69}, {88 if change >= 0 else 58}, 0.1)',
-        hovertemplate="Price: %{y:.2f}<extra></extra>"
-    ))
-
-    fig.update_layout(
-        plot_bgcolor="black", paper_bgcolor="black",
-        xaxis=dict(showgrid=False, color="#8e8e93"),
-        yaxis=dict(side="right", gridcolor="#2c2c2e", color="#8e8e93"),
-        height=350, margin=dict(l=0, r=0, t=10, b=0)
-    )
+    line_color = "#30d158" if pct >= 0 else "#ff453a"
+    fig.add_trace(go.Scatter(x=chart_data.index, y=chart_data['Close'], mode='lines', 
+                             line=dict(color=line_color, width=3), fill='tozeroy',
+                             fillcolor=f"rgba({(48 if pct >= 0 else 255)}, {(209 if pct >= 0 else 69)}, {(88 if pct >= 0 else 58)}, 0.1)"))
+    fig.update_layout(template="plotly_dark", plot_bgcolor="black", paper_bgcolor="black", 
+                      height=400, margin=dict(l=0, r=0, t=10, b=0), xaxis=dict(showgrid=False), yaxis=dict(side="right"))
     st.plotly_chart(fig, use_container_width=True)
 
-    # Market Details
-    st.markdown("---")
-    m1, m2, m3, m4 = st.columns(4)
-    m1.write(f"**High**\n\n{data['High'].max():,.2f}")
-    m2.write(f"**Low**\n\n{data['Low'].min():,.2f}")
-    m3.write(f"**Mkt Cap**\n\n{info.get('marketCap', 0)/1e9:.1f}B")
-    m4.write(f"**P/E Ratio**\n\n{info.get('trailingPE', 'N/A')}")
-else:
-    st.warning(f"Unable to load data for {ticker}. Check the symbol format (e.g., .NS for Indian stocks).")
+    # --- 6. FUNDAMENTALS (REVENUE VS EARNINGS) ---
+    st.markdown("### 📊 Annual Financials")
+    
+    try:
+        fin = stock.financials.T[['Total Revenue', 'Net Income']].dropna().head(4)
+        fig_fin = px.bar(fin, barmode='group', template="plotly_dark", 
+                         color_discrete_map={'Total Revenue': '#007aff', 'Net Income': '#30d158'})
+        fig_fin.update_layout(plot_bgcolor="black", paper_bgcolor="black", height=300)
+        st.plotly_chart(fig_fin, use_container_width=True)
+    except:
+        st.info("Detailed financials not available for this ticker.")
+
+    # --- 7. RECOGNITION / ACTION ---
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.markdown("### 🏛️ About Company")
+        st.write(info.get('summary', 'No summary available.'))
+    with col_b:
+        st.markdown("### 🛠️ Quick Tools")
+        if st.button("🔔 Set Dynamic Price Alert"):
+            st.toast(f"Monitoring {ticker} for volatility!", icon="🔥")
+        st.download_button("📥 Export Historical Data (CSV)", data.to_csv(), "data.csv")
