@@ -9,158 +9,129 @@ st.set_page_config(page_title="FinQuest Pro", layout="wide", initial_sidebar_sta
 
 st.markdown("""
     <style>
-    /* Absolute Dark Mode */
-    .stApp { background-color: #000000; color: #FFFFFF; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+    .stApp { background-color: #000000; color: #FFFFFF; font-family: -apple-system, sans-serif; }
     .stDeployButton {display:none;}
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     
-    /* High-End Hero Section */
-    .hero-container {
-        padding: 40px 20px;
-        text-align: center;
-        border-bottom: 1px solid #1C1C1E;
-        margin-bottom: 30px;
-    }
-    .hero-name { font-size: 3rem; font-weight: 800; letter-spacing: -1px; color: #FFFFFF; margin-bottom: 5px; }
-    .hero-sub { color: #8E8E93; font-size: 1.1rem; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 20px; }
+    /* Hero Branding */
+    .hero-container { padding: 40px 20px; text-align: center; border-bottom: 1px solid #1C1C1E; margin-bottom: 30px; }
+    .hero-name { font-size: 3rem; font-weight: 800; letter-spacing: -1px; margin-bottom: 5px; }
+    .hero-sub { color: #8E8E93; font-size: 0.9rem; letter-spacing: 2px; text-transform: uppercase; }
     
-    /* Premium Index Cards */
-    .index-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 30px; }
-    .index-item {
-        background: #1C1C1E; border: 1px solid #2C2C2E; border-radius: 12px;
-        padding: 20px; text-align: center; transition: all 0.3s ease;
-    }
-    .index-item:hover { border-color: #007AFF; transform: translateY(-3px); }
-    .index-label { color: #8E8E93; font-size: 0.8rem; font-weight: 600; margin-bottom: 5px; }
-    .index-value { font-size: 1.4rem; font-weight: 700; color: #FFFFFF; }
-
-    /* Buttons */
+    /* Clickable Index Cards */
     .stButton>button {
-        width: 100%; border-radius: 10px; height: 3.5em; background-color: #1C1C1E; 
-        border: 1px solid #2C2C2E; color: white; font-weight: 600;
+        width: 100%; border-radius: 12px; background-color: #1C1C1E; 
+        border: 1px solid #2C2C2E; color: white; padding: 20px; transition: 0.3s;
     }
-    .stButton>button:hover { border-color: #007AFF; color: #007AFF; }
+    .stButton>button:hover { border-color: #007AFF; transform: translateY(-2px); background-color: #262629; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. NAVIGATION & LOGIC ---
+# --- 2. NAVIGATION & MARKET DATA ---
 if "page" not in st.session_state: st.session_state.page = "home"
 if "ticker" not in st.session_state: st.session_state.ticker = "RELIANCE.NS"
+if "current_index" not in st.session_state: st.session_state.current_index = "NIFTY 50"
 
-def nav(target, ticker=None):
+def nav(target, ticker=None, index_name=None):
     st.session_state.page = target
     if ticker: st.session_state.ticker = ticker
+    if index_name: st.session_state.current_index = index_name
     st.rerun()
 
-# --- 3. PAGE: HOME SCREEN (Krishna's Luxury Intro + Index Directory) ---
+# Definitions of top stocks for each index
+index_map = {
+    "NIFTY 50": ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS", "ITC.NS", "LT.NS", "SBIN.NS"],
+    "S&P 500": ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK-B"],
+    "NASDAQ": ["AVGO", "COST", "ADBE", "NFLX", "AMD", "PEP", "AZN", "INTC"],
+    "SENSEX": ["ASIANPAINT.NS", "AXISBANK.NS", "BAJFINANCE.NS", "M&M.NS", "MARUTI.NS", "SUNPHARMA.NS", "TITAN.NS"]
+}
+
+# --- 3. PAGE: HOME SCREEN (Luxury Intro + Clickable Directory) ---
 if st.session_state.page == "home":
     st.markdown("""
         <div class="hero-container">
             <div class="hero-sub">FinQuest Pro Terminal</div>
             <div class="hero-name">KRISHNA</div>
-            <p style='color: #8E8E93; max-width: 500px; margin: 0 auto; font-style: italic;'>
-                "Precision data. Elite design. Your window into the global markets."
-            </p>
+            <p style='color: #8E8E93;'>Precision data. Elite design. Click an index to explore.</p>
         </div>
     """, unsafe_allow_html=True)
 
-    # Clean Index List (No Charts)
-    indices = {
-        "NIFTY 50": "^NSEI",
-        "SENSEX": "^BSESN",
-        "S&P 500": "^GSPC",
-        "NASDAQ": "^IXIC",
-        "GOLD": "GC=F"
-    }
-    
-    st.markdown('<div style="text-align: center; margin-bottom: 20px; color: #8E8E93; font-weight: 600;">MARKET DIRECTORY</div>', unsafe_allow_html=True)
-    
-    # We use columns to create the high-end grid
-    cols = st.columns(len(indices))
-    for i, (name, sym) in enumerate(indices.items()):
-        with cols[i]:
-            try:
-                # Get only the latest price
-                price = yf.download(sym, period="1d", progress=False)['Close'].iloc[-1]
-                st.markdown(f"""
-                    <div class="index-item">
-                        <div class="index-label">{name}</div>
-                        <div class="index-value">{price:,.0f}</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            except:
-                st.markdown(f'<div class="index-item"><div class="index-label">{name}</div><div>Offline</div></div>', unsafe_allow_html=True)
+    # Search Bar
+    search = st.text_input("DISCOVER ASSET", placeholder="Enter ticker (e.g. TSLA, TCS.NS)...")
+    if search: nav("detail", search.upper())
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # Elegant Search & Navigation
-    c1, c2, c3 = st.columns([1, 2, 1])
-    with c2:
-        search = st.text_input("DISCOVER ASSET", placeholder="e.g. RELIANCE.NS, TSLA, AAPL")
-        if search: nav("detail", search.upper())
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("OPEN NIFTY 50 LEADERS"): nav("nifty")
+    # 4-Column Clickable Grid
+    cols = st.columns(4)
+    indices = list(index_map.keys())
+    for i, name in enumerate(indices):
+        with cols[i]:
+            if st.button(f"🏛️\n\n{name}"):
+                nav("index_view", index_name=name)
 
-# --- 4. PAGE: NIFTY 50 TABLE (High-End Table) ---
-elif st.session_state.page == "nifty":
-    st.markdown("<h2 style='text-align: center;'>NIFTY 50 CONSTITUENTS</h2>", unsafe_allow_html=True)
-    if st.button("← EXIT TO TERMINAL"): nav("home")
+# --- 4. PAGE: INDEX VIEW (Dynamic Stock Table) ---
+elif st.session_state.page == "index_view":
+    idx_name = st.session_state.current_index
+    st.markdown(f"<h2 style='text-align: center;'>{idx_name} Leaders</h2>", unsafe_allow_html=True)
+    if st.button("← BACK TO TERMINAL"): nav("home")
     
-    tickers = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS", "ITC.NS", "LT.NS", "SBIN.NS", "BHARTIARTL.NS", "AXISBANK.NS"]
+    tickers = index_map.get(idx_name, [])
     
-    # Professional Table Layout
-    rows = []
-    for t in tickers:
-        try:
-            d = yf.download(t, period="2d", progress=False)
-            if isinstance(d.columns, pd.MultiIndex): d.columns = d.columns.get_level_values(0)
-            price = d['Close'].iloc[-1]
-            change = ((price - d['Close'].iloc[-2]) / d['Close'].iloc[-2]) * 100
-            rows.append({"Asset": t.split(".")[0], "Price": f"₹{price:,.2f}", "Performance": f"{change:+.2f}%"})
-        except: pass
-    
-    st.table(pd.DataFrame(rows))
-    
-    st.markdown("### SELECT FOR ANALYSIS")
-    grid_cols = st.columns(2)
-    for i, t in enumerate(tickers):
-        with grid_cols[i % 2]:
-            if st.button(f"SELECT {t.split('.')[0]}", key=f"btn_{t}"): nav("detail", t)
+    with st.spinner(f"Accessing {idx_name} data..."):
+        rows = []
+        for t in tickers:
+            try:
+                d = yf.download(t, period="2d", progress=False)
+                if isinstance(d.columns, pd.MultiIndex): d.columns = d.columns.get_level_values(0)
+                price = d['Close'].iloc[-1]
+                change = ((price - d['Close'].iloc[-2]) / d['Close'].iloc[-2]) * 100
+                rows.append({"Asset": t.split(".")[0], "Price": f"{price:,.2f}", "Day %": f"{change:+.2f}%"})
+            except: pass
+        
+        # Display as a clean, high-end table
+        st.table(pd.DataFrame(rows))
+        
+        st.markdown("### SELECT FOR ANALYSIS")
+        grid_cols = st.columns(2)
+        for i, t in enumerate(tickers):
+            with grid_cols[i % 2]:
+                if st.button(f"OPEN {t.split('.')[0]}", key=f"list_{t}"):
+                    nav("detail", t)
 
-# --- 5. PAGE: DETAIL (Trend + Financials + Suggestions) ---
+# --- 5. PAGE: DETAIL (Trend + Financials + AI Suggestions) ---
 elif st.session_state.page == "detail":
     t = st.session_state.ticker
-    if st.button("← BACK"): nav("home")
+    if st.button("← EXIT TO LIST"): nav("index_view")
     
-    # Download data
     df = yf.download(t, period="1y", progress=False)
     if not df.empty:
         if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
-        
         ltp = df['Close'].iloc[-1]
+        
         st.markdown(f"<h1 style='text-align:center;'>{t}</h1>", unsafe_allow_html=True)
         
-        # 💡 AI Suggestion Box (Restored)
+        # Suggestion Box
         ma50 = df['Close'].rolling(window=50).mean().iloc[-1]
         status, color = ("BULLISH", "#30d158") if ltp > ma50 else ("CAUTIOUS", "#ff453a")
-        
         st.markdown(f"""
             <div style="border: 1px solid {color}; border-radius: 15px; padding: 20px; text-align: center; background: rgba(0,0,0,0.5);">
-                <div style="color: {color}; font-weight: 800; font-size: 1.2rem;">MARKET STATUS: {status}</div>
-                <div style="font-size: 0.9rem; color: #8E8E93;">SUGGESTED ENTRY AT SUPPORT</div>
+                <div style="color: {color}; font-weight: 800;">MARKET STATUS: {status}</div>
                 <div style="font-size: 2rem; font-weight: 700;">₹{ma50:,.2f}</div>
+                <div style="font-size: 0.8rem; color: #8E8E93;">SUGGESTED ENTRY POINT</div>
             </div>
         """, unsafe_allow_html=True)
 
-        # Restored Trend Line Chart
+        # Price Trend Chart
+        
         fig_t = go.Figure(go.Scatter(x=df.index, y=df['Close'], line=dict(color='#007aff', width=3), fill='tozeroy', fillcolor='rgba(0, 122, 255, 0.1)'))
         fig_t.update_layout(template="plotly_dark", plot_bgcolor="black", paper_bgcolor="black", height=350, margin=dict(l=0,r=0,t=10,b=0), xaxis=dict(showgrid=False), yaxis=dict(side="right"))
         st.plotly_chart(fig_t, use_container_width=True)
 
-        # Financials Bar Chart
+        # Financials
         try:
-            st.subheader("ANNUAL REVENUE")
+            st.subheader("ANNUAL PERFORMANCE")
             stock = yf.Ticker(t)
             fin = stock.financials.T[['Total Revenue', 'Net Income']].head(4)
             fig_f = px.bar(fin, barmode='group', template="plotly_dark", color_discrete_map={'Total Revenue': '#007aff', 'Net Income': '#30d158'})
