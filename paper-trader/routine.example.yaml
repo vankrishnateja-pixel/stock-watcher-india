@@ -1,0 +1,15 @@
+# Example Claude Code routine — runs one paper-trading iteration every 3 hours.
+# Create it interactively with `/schedule` in Claude Code, or adapt this.
+# Routines run on Anthropic's cloud, so the loop keeps going with your laptop closed.
+name: paper-trade-3h
+schedule: "0 */3 * * *"          # every 3 hours, on the hour
+goal: |
+  Run one iteration of the paper-trading loop by executing ./run_once.sh from the
+  paper-trader directory. That script fetches prices, checks the two-sided stop
+  condition, and — if still running — invokes the /paper-trade skill to analyze
+  and place simulated trades. Report what happened in 2-3 lines. Do NOT connect to
+  any brokerage; this is paper only.
+permissions:
+  - shell_exec          # to run run_once.sh and the python tools
+  - file_write          # to update state/portfolio.json and the ledger
+# No network-to-brokerage permission exists or is needed — trades are simulated.
