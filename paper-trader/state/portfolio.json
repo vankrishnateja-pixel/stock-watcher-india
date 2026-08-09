@@ -1,0 +1,25 @@
+{
+  "created_at": "2026-08-09T13:03:05+00:00",
+  "cash": 300.0,
+  "start_equity": 300.0,
+  "positions": {},
+  "realized_pnl": 0.0,
+  "trade_count": 0,
+  "limits": {
+    "target_equity": 500.0,
+    "floor_equity": 210.0,
+    "max_trades": 40,
+    "max_position_pct": 0.4,
+    "deadline": null
+  },
+  "universe": [
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "AMZN",
+    "GOOGL",
+    "SPY",
+    "QQQ"
+  ],
+  "history": []
+}
