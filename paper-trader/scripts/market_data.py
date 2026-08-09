@@ -5,16 +5,23 @@ market_data.py — fetch current prices for the paper-trading loop.
 Prints a JSON object like {"AAPL": 190.12, "MSFT": 402.5}.
 
 Sources:
-  --source yfinance   (default) real quotes via the `yfinance` package.
-                      Requires internet + `pip install yfinance`.
+  --source yfinance   (default) real quotes fetched directly from Yahoo
+                      Finance's public chart API over plain HTTPS. Requires
+                      internet + the `requests` package. (Despite the source
+                      name, this no longer goes through the `yfinance`
+                      package/`curl_cffi` — see note below.)
   --source stub       deterministic fake prices for offline testing of the
                       pipeline. Reads overrides from the STUB_PRICES env var
                       (JSON), otherwise makes up a stable pseudo-price per
                       ticker. NEVER use stub prices for anything you care about.
 
-Note: this sandbox blocks finance domains, so `yfinance` only works when you
-run this on your own machine inside Claude Code. Use --source stub here to
-prove the wiring end-to-end.
+Note: the `yfinance` package fetches through `curl_cffi`, which impersonates
+a browser TLS fingerprint to get past Yahoo's bot detection. That fingerprint
+doesn't survive being relayed through a TLS-intercepting proxy (connection
+resets on every request), which is exactly the environment this often runs
+in. A plain `requests` call with a normal User-Agent hits the same Yahoo
+endpoint yfinance uses under the hood and works fine, so that's what this
+does now — real Yahoo quotes, no proxy-breaking impersonation layer.
 """
 import argparse, hashlib, json, os, sys
 
@@ -30,27 +37,30 @@ def stub_price(sym):
     return round(20 + (h % 50000) / 100.0, 2)
 
 
+YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{sym}"
+YAHOO_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+}
+
+
 def yfinance_prices(syms):
     try:
-        import yfinance as yf
+        import requests
     except ImportError:
-        sys.exit("yfinance not installed. Run: pip install yfinance  "
+        sys.exit("requests not installed. Run: pip install requests  "
                  "(or use --source stub for offline testing)")
     out = {}
-    data = yf.download(syms, period="1d", interval="1m",
-                       progress=False, auto_adjust=True)
-    # yfinance returns a multi-index frame for >1 symbol; grab last close.
-    try:
-        closes = data["Close"]
-        last = closes.ffill().iloc[-1]
-        if hasattr(last, "items"):
-            for sym, px in last.items():
-                if px == px:  # not NaN
-                    out[sym] = round(float(px), 2)
-        else:  # single symbol
-            out[syms[0]] = round(float(last), 2)
-    except Exception as e:
-        sys.exit(f"Could not parse yfinance data: {e}")
+    for sym in syms:
+        try:
+            r = requests.get(YAHOO_CHART_URL.format(sym=sym), headers=YAHOO_HEADERS,
+                             timeout=15)
+            r.raise_for_status()
+            result = r.json()["chart"]["result"][0]
+            price = result["meta"]["regularMarketPrice"]
+            out[sym] = round(float(price), 2)
+        except Exception as e:
+            sys.exit(f"Could not fetch price for {sym} from Yahoo Finance: {e}")
     return out
 
 

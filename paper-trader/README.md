@@ -17,7 +17,7 @@ paper-trader/
 ├── run_once.sh           # one loop iteration — schedule THIS every 3h
 ├── scripts/
 │   ├── portfolio.py      # deterministic ledger + hard guardrails + STOP/CONTINUE logic
-│   └── market_data.py    # price fetch (yfinance real quotes, or --source stub offline)
+│   └── market_data.py    # price fetch (real Yahoo Finance quotes, or --source stub offline)
 ├── state/                # portfolio.json + trade_log.md (created on init; the loop's memory)
 └── routine.example.yaml  # example Claude Code routine (every 3 hours)
 ```
@@ -26,7 +26,7 @@ paper-trader/
 
 ```bash
 # from the package root
-pip install yfinance          # real quotes (skip if you'll only use stub prices)
+pip install requests          # real quotes (skip if you'll only use stub prices)
 python3 scripts/portfolio.py init \
     --cash 300 --target-equity 500 --floor-equity 210 \
     --max-trades 40 --max-position-pct 0.40
@@ -42,7 +42,7 @@ the goal. Tune all of it.
 
 ```bash
 SOURCE=stub ./run_once.sh     # fake prices, proves the wiring without internet
-./run_once.sh                 # real prices via yfinance on your machine
+./run_once.sh                 # real prices from Yahoo Finance
 ```
 
 The mid-run pre-check skips the model entirely when a stop condition is already
