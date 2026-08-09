@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 scripts/portfolio.py:*)",
+      "Bash(python3 scripts/market_data.py:*)"
+    ]
+  }
+}
