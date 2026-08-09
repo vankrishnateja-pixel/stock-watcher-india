@@ -13,7 +13,7 @@ the target in simulation, that's the cheapest possible thing to learn.
 
 ```
 paper-trader/
-├── SKILL.md              # the policy the agent follows each run (analyze → decide → act)
+├── .claude/skills/paper-trade/SKILL.md   # the policy the agent follows each run (analyze → decide → act)
 ├── run_once.sh           # one loop iteration — schedule THIS every 3h
 ├── scripts/
 │   ├── portfolio.py      # deterministic ledger + hard guardrails + STOP/CONTINUE logic
